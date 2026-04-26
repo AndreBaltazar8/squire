@@ -1,0 +1,4 @@
+*.test
+/squire
+/dist/
+/coverage.out
