@@ -78,8 +78,12 @@ func newDownloadCommand(opts *rootOptions) *cobra.Command {
 			for _, component := range downloaded {
 				target := filepath.Join(componentsDir, component.FileName)
 				if !force {
-					if _, err := os.Stat(target); err == nil {
-						return fmt.Errorf("%s already exists; rerun with --force to overwrite", target)
+					if existing, err := os.ReadFile(target); err == nil {
+						if string(existing) == string(component.Body) {
+							fmt.Fprintf(cmd.OutOrStdout(), "kept %s\n", target)
+							continue
+						}
+						return fmt.Errorf("%s already exists and differs; rerun with --force to overwrite", target)
 					} else if !errors.Is(err, os.ErrNotExist) {
 						return err
 					}
