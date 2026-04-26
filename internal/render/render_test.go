@@ -17,19 +17,37 @@ func TestClaudeImportsAgents(t *testing.T) {
 	if !strings.Contains(body, "@AGENTS.md") {
 		t.Fatalf("expected AGENTS import, got:\n%s", body)
 	}
-	if !strings.Contains(body, "squire:start id=claude-code") {
-		t.Fatalf("expected claude section marker, got:\n%s", body)
+	if !strings.Contains(body, "## Claude Code") {
+		t.Fatalf("expected claude section heading, got:\n%s", body)
+	}
+	if strings.Contains(body, "<!--") {
+		t.Fatalf("expected markerless Claude output, got:\n%s", body)
 	}
 }
 
-func TestManagedComponents(t *testing.T) {
-	body, err := Agents(config.Config{}, project.Info{Name: "demo", Components: []string{"svelte", "go"}}, nil)
+func TestAgentsIncludesDesignSystemSection(t *testing.T) {
+	body, err := Agents(config.Config{}, project.Info{
+		Name:   "demo",
+		Design: []string{"`DESIGN.md` is the visual design system source of truth."},
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := ManagedComponents([]byte(body))
-	if len(got) != 2 || got[0] != "go" || got[1] != "svelte" {
-		t.Fatalf("ManagedComponents = %#v", got)
+	if !strings.Contains(body, "## Design System") {
+		t.Fatalf("expected design-system section heading, got:\n%s", body)
+	}
+	if !strings.Contains(body, "`DESIGN.md` is the visual design system source of truth.") {
+		t.Fatalf("expected design guidance, got:\n%s", body)
+	}
+}
+
+func TestAgentsSkipsEmptyDesignSystemSection(t *testing.T) {
+	body, err := Agents(config.Config{}, project.Info{Name: "demo"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body, "## Design System") {
+		t.Fatalf("expected empty design-system section to be skipped, got:\n%s", body)
 	}
 }
 

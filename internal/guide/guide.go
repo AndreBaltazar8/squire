@@ -11,6 +11,7 @@ type Section struct {
 	Title     string
 	Required  bool
 	Preserved bool
+	SkipEmpty bool
 	Body      string
 }
 
@@ -33,6 +34,13 @@ func AgentSections() []Section {
 			Title:    "Project Structure",
 			Required: true,
 			Body:     "{{ bullets .Project.Structure }}",
+		},
+		{
+			ID:        "design-system",
+			Title:     "Design System",
+			Required:  false,
+			SkipEmpty: true,
+			Body:      "{{ optionalBullets .Project.Design }}",
 		},
 		{
 			ID:       "commands",
@@ -77,7 +85,7 @@ func AgentSections() []Section {
 			Body: `- Treat this file as project map, not encyclopedia.
 - Link source/docs for deep detail.
 - Surface missing or conflicting instructions.
-- Keep Squire comments for ` + "`squire analyze`" + `.`,
+- Keep generated section headings stable for ` + "`squire analyze`" + ` and regeneration.`,
 		},
 		{
 			ID:        CustomSectionID,

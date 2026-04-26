@@ -53,6 +53,7 @@ type ComponentGuidance struct {
 	Overview     []string           `yaml:"overview" json:"overview"`
 	Technologies []string           `yaml:"technologies" json:"technologies"`
 	Structure    []string           `yaml:"structure" json:"structure"`
+	Design       []string           `yaml:"design" json:"design"`
 	Commands     []ComponentCommand `yaml:"commands" json:"commands"`
 	Environment  []string           `yaml:"environment" json:"environment"`
 	Workflow     []string           `yaml:"workflow" json:"workflow"`

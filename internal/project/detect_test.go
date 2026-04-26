@@ -114,6 +114,29 @@ func TestDetectedComponentAddsGuidanceAndTools(t *testing.T) {
 	}
 }
 
+func TestDetectDesignFileAddsGuidance(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "DESIGN.md"), "# Design System\n")
+
+	info, err := Detect(dir, "demo", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !contains(info.DesignFiles, "DESIGN.md") {
+		t.Fatalf("design files = %#v", info.DesignFiles)
+	}
+	if !contains(info.Structure, "`DESIGN.md` contains visual design system.") {
+		t.Fatalf("structure = %#v", info.Structure)
+	}
+	if !contains(info.Design, "`DESIGN.md` is the visual design system source of truth. Read before frontend/UI changes.") {
+		t.Fatalf("design = %#v", info.Design)
+	}
+	if !contains(info.Design, "When changing root `DESIGN.md`, run `npx @google/design.md lint DESIGN.md` when available.") {
+		t.Fatalf("design = %#v", info.Design)
+	}
+}
+
 func TestSelectedComponentWorksWithoutDetectorMatch(t *testing.T) {
 	dir := t.TempDir()
 

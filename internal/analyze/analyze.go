@@ -1,16 +1,10 @@
 package analyze
 
 import (
-	"regexp"
 	"sort"
 	"strings"
 
 	"squire/internal/guide"
-)
-
-var (
-	startRe = regexp.MustCompile(`<!--\s*squire:start\s+id=([a-zA-Z0-9_.-]+)(?:\s+required=(true|false))?[^>]*-->`)
-	endRe   = regexp.MustCompile(`<!--\s*squire:end\s+id=([a-zA-Z0-9_.-]+)\s*-->`)
 )
 
 type Report struct {
@@ -19,8 +13,6 @@ type Report struct {
 	Present          []string          `json:"present"`
 	Missing          []string          `json:"missing"`
 	UntaggedMatches  []UntaggedHeading `json:"untagged_matches"`
-	UnknownTagged    []string          `json:"unknown_tagged"`
-	HasManagedMarker bool              `json:"has_managed_marker"`
 }
 
 type UntaggedHeading struct {
@@ -29,31 +21,16 @@ type UntaggedHeading struct {
 }
 
 func File(content, filename string, expected []guide.Section) Report {
-	expectedIDs := map[string]bool{}
 	expectedTitles := map[string]guide.Section{}
 	required := []string{}
 	for _, section := range expected {
-		expectedIDs[section.ID] = true
 		expectedTitles[slug(section.Title)] = section
 		if section.Required {
 			required = append(required, section.ID)
 		}
 	}
 
-	presentSet := map[string]bool{}
-	for _, match := range startRe.FindAllStringSubmatch(content, -1) {
-		presentSet[match[1]] = true
-	}
-
-	endIDs := map[string]bool{}
-	for _, match := range endRe.FindAllStringSubmatch(content, -1) {
-		endIDs[match[1]] = true
-	}
-	for id := range presentSet {
-		if !endIDs[id] {
-			delete(presentSet, id)
-		}
-	}
+	presentSet := headingMatches(content, expectedTitles)
 
 	present := sortedKeys(presentSet)
 	missing := []string{}
@@ -63,23 +40,12 @@ func File(content, filename string, expected []guide.Section) Report {
 		}
 	}
 
-	unknown := []string{}
-	for _, id := range present {
-		if !expectedIDs[id] {
-			unknown = append(unknown, id)
-		}
-	}
-
-	untagged := untaggedMatches(content, expectedTitles, presentSet)
-
 	return Report{
 		File:             filename,
 		ExpectedRequired: required,
 		Present:          present,
 		Missing:          missing,
-		UntaggedMatches:  untagged,
-		UnknownTagged:    unknown,
-		HasManagedMarker: strings.Contains(content, "squire:managed"),
+		UntaggedMatches:  nil,
 	}
 }
 
@@ -91,25 +57,35 @@ func IsComplete(report Report) bool {
 	return len(report.Missing) == 0
 }
 
-func untaggedMatches(content string, expectedTitles map[string]guide.Section, present map[string]bool) []UntaggedHeading {
-	var out []UntaggedHeading
+func headingMatches(content string, expectedTitles map[string]guide.Section) map[string]bool {
+	out := map[string]bool{}
 	for _, line := range strings.Split(content, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "#") {
+		_, title, ok := markdownHeading(line)
+		if !ok {
 			continue
 		}
-		title := strings.TrimSpace(strings.TrimLeft(line, "#"))
-		if title == "" {
-			continue
-		}
-		if section, ok := expectedTitles[slug(title)]; ok && !present[section.ID] {
-			out = append(out, UntaggedHeading{
-				SectionID: section.ID,
-				Heading:   title,
-			})
+		if section, ok := expectedTitles[slug(title)]; ok {
+			out[section.ID] = true
 		}
 	}
 	return out
+}
+
+func markdownHeading(line string) (int, string, bool) {
+	line = strings.TrimSpace(line)
+	level := 0
+	for level < len(line) && level < 6 && line[level] == '#' {
+		level++
+	}
+	if level == 0 || level >= len(line) || line[level] != ' ' {
+		return 0, "", false
+	}
+	title := strings.TrimSpace(line[level+1:])
+	title = strings.TrimSpace(strings.TrimRight(title, "#"))
+	if title == "" {
+		return 0, "", false
+	}
+	return level, title, true
 }
 
 func sortedKeys(values map[string]bool) []string {

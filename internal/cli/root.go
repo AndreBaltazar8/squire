@@ -425,30 +425,7 @@ func resolveGenerationComponents(cwd, target string, requested []string, explici
 		return ids, nil
 	}
 
-	for _, filename := range componentLookupFiles(target) {
-		body, err := os.ReadFile(filepath.Join(cwd, filename))
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return nil, err
-		}
-		if ids := render.ManagedComponents(body); len(ids) > 0 {
-			return ids, nil
-		}
-	}
 	return nil, nil
-}
-
-func componentLookupFiles(target string) []string {
-	switch target {
-	case "agents":
-		return []string{guide.AgentsFile, guide.ClaudeFile}
-	case "claude":
-		return []string{guide.ClaudeFile, guide.AgentsFile}
-	default:
-		return []string{guide.AgentsFile, guide.ClaudeFile}
-	}
 }
 
 func parseComponentArgs(values []string) []string {
@@ -527,7 +504,7 @@ func writeGenerated(path string, body []byte, force, check bool) (string, error)
 		if check {
 			return "", fmt.Errorf("%s is out of date", path)
 		}
-		if !force && !render.IsManaged(existing) {
+		if !force && !isSquireGeneratedFile(path, existing) {
 			return "", fmt.Errorf("%s exists and is not Squire-managed; rerun with --force to overwrite", path)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -545,6 +522,18 @@ func writeGenerated(path string, body []byte, force, check bool) (string, error)
 	return "wrote", nil
 }
 
+func isSquireGeneratedFile(path string, body []byte) bool {
+	content := string(body)
+	switch filepath.Base(path) {
+	case guide.AgentsFile:
+		return analyze.IsComplete(analyze.File(content, path, analyze.ExpectedForTarget("agents")))
+	case guide.ClaudeFile:
+		return strings.Contains(content, "@AGENTS.md") && analyze.IsComplete(analyze.File(content, path, analyze.ExpectedForTarget("claude")))
+	default:
+		return false
+	}
+}
+
 func analyzePath(path string) (analyze.Report, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -560,7 +549,6 @@ func analyzePath(path string) (analyze.Report, error) {
 
 func printReport(cmd *cobra.Command, report analyze.Report) {
 	fmt.Fprintf(cmd.OutOrStdout(), "%s\n", report.File)
-	fmt.Fprintf(cmd.OutOrStdout(), "  managed: %t\n", report.HasManagedMarker)
 	fmt.Fprintf(cmd.OutOrStdout(), "  present: %s\n", joinOrNone(report.Present))
 	fmt.Fprintf(cmd.OutOrStdout(), "  missing: %s\n", joinOrNone(report.Missing))
 	if len(report.UntaggedMatches) > 0 {
@@ -569,9 +557,6 @@ func printReport(cmd *cobra.Command, report analyze.Report) {
 			values = append(values, item.SectionID+" ("+item.Heading+")")
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "  untagged matching headings: %s\n", strings.Join(values, ", "))
-	}
-	if len(report.UnknownTagged) > 0 {
-		fmt.Fprintf(cmd.OutOrStdout(), "  unknown tagged sections: %s\n", strings.Join(report.UnknownTagged, ", "))
 	}
 }
 

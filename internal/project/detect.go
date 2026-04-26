@@ -14,9 +14,11 @@ type Info struct {
 	Name         string              `json:"name"`
 	Root         string              `json:"root"`
 	Components   []string            `json:"components"`
+	DesignFiles  []string            `json:"design_files"`
 	Overview     []string            `json:"overview"`
 	Technologies []string            `json:"technologies"`
 	Structure    []string            `json:"structure"`
+	Design       []string            `json:"design"`
 	Commands     []Command           `json:"commands"`
 	Environment  []string            `json:"environment"`
 	Workflow     []string            `json:"workflow"`
@@ -53,6 +55,8 @@ func Detect(root, nameOverride string, selectedComponents []string, components [
 	info.Overview = detectOverview(absRoot, name)
 	info.Technologies = detectTechnologies(absRoot)
 	info.Structure = detectStructure(absRoot)
+	info.DesignFiles = detectDesignFiles(absRoot)
+	info.Design = detectDesign(info.DesignFiles)
 	info.Commands = detectCommands(absRoot)
 	info.Environment = defaultEnvironment()
 	info.Workflow = defaultWorkflow()
@@ -95,6 +99,8 @@ func applyComponents(info *Info, root string, selectedComponents []string, compo
 	info.Overview = dedupe(info.Overview)
 	info.Technologies = dedupe(info.Technologies)
 	info.Structure = dedupe(info.Structure)
+	info.DesignFiles = dedupe(info.DesignFiles)
+	info.Design = dedupe(info.Design)
 	info.Commands = dedupeCommands(info.Commands)
 	info.Environment = dedupe(info.Environment)
 	info.Workflow = dedupe(info.Workflow)
@@ -132,6 +138,7 @@ func applyComponent(info *Info, component config.Component) {
 	info.Overview = append(info.Overview, component.Guidance.Overview...)
 	info.Technologies = append(info.Technologies, component.Guidance.Technologies...)
 	info.Structure = append(info.Structure, component.Guidance.Structure...)
+	info.Design = append(info.Design, component.Guidance.Design...)
 	for _, command := range component.Guidance.Commands {
 		info.Commands = append(info.Commands, Command{
 			Command:     command.Command,
@@ -276,6 +283,56 @@ func packageTechnologies(root string, pkg *packageJSON) []string {
 		tech = append(tech, "Vue")
 	}
 	return dedupe(tech)
+}
+
+func detectDesignFiles(root string) []string {
+	var files []string
+	for _, name := range []string{"DESIGN.md", "design.md"} {
+		if exists(root, name) {
+			files = append(files, name)
+		}
+	}
+	for _, path := range glob(root, "src/*/DESIGN.md") {
+		files = append(files, filepath.ToSlash(path))
+	}
+	for _, path := range glob(root, "src/*/design.md") {
+		files = append(files, filepath.ToSlash(path))
+	}
+	return dedupe(files)
+}
+
+func detectDesign(files []string) []string {
+	if len(files) == 0 {
+		return nil
+	}
+
+	lines := []string{
+		designFileSummary(files),
+		"Treat design-file tokens as normative; prose explains intent and application.",
+	}
+	if hasRootDesignFile(files) {
+		lines = append(lines, "When changing root `DESIGN.md`, run `npx @google/design.md lint DESIGN.md` when available.")
+	} else {
+		lines = append(lines, "When changing a design file, run `npx @google/design.md lint <path>` when available.")
+	}
+	return lines
+}
+
+func designFileSummary(files []string) string {
+	joined := "`" + strings.Join(files, "`, `") + "`"
+	if len(files) == 1 {
+		return joined + " is the visual design system source of truth. Read before frontend/UI changes."
+	}
+	return joined + " are visual design system sources of truth. Read the relevant file before frontend/UI changes."
+}
+
+func hasRootDesignFile(files []string) bool {
+	for _, file := range files {
+		if file == "DESIGN.md" {
+			return true
+		}
+	}
+	return false
 }
 
 func detectStructure(root string) []string {
@@ -640,6 +697,8 @@ func describePath(name string, dir bool) string {
 		return "project config"
 	case "README.md":
 		return "overview"
+	case "DESIGN.md", "design.md":
+		return "visual design system"
 	default:
 		return ""
 	}
@@ -647,7 +706,7 @@ func describePath(name string, dir bool) string {
 
 func isImportantRootFile(name string) bool {
 	switch name {
-	case "go.mod", "go.sum", "package.json", "README.md", "readme.md", "config.yaml", "Dockerfile", "docker-compose.yml", "compose.yaml", "pyproject.toml", "Cargo.toml":
+	case "go.mod", "go.sum", "package.json", "README.md", "readme.md", "DESIGN.md", "design.md", "config.yaml", "Dockerfile", "docker-compose.yml", "compose.yaml", "pyproject.toml", "Cargo.toml":
 		return true
 	default:
 		return false

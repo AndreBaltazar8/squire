@@ -1,6 +1,6 @@
 # Squire
 
-Squire normalizes the project instruction files used by coding agents. It gives a project a consistent `AGENTS.md` and `CLAUDE.md`, keeps those files analyzable with Squire section markers, and stores reusable agent/tool preferences under `~/.config/squire`.
+Squire normalizes the project instruction files used by coding agents. It gives a project consistent markerless `AGENTS.md` and `CLAUDE.md` files, keeps them analyzable by stable headings, and stores reusable agent/tool preferences under `~/.config/squire`.
 
 ## Why
 
@@ -13,6 +13,7 @@ Different agents read different files:
 Squire treats `AGENTS.md` as the shared source of truth and generates `CLAUDE.md` as a thin Claude-specific wrapper that imports it.
 
 It detects root project files and immediate `src/*` subprojects, including Go services and SvelteKit/Vite apps, and writes concise project-structure phrases.
+When a project has `DESIGN.md` or `design.md`, Squire surfaces it as the visual design system source of truth so agents read design tokens and rationale before frontend/UI changes.
 
 ## Commands
 
@@ -54,21 +55,13 @@ go run ./cmd/squire cli add playwright --description "Rendered UI helper." --whe
 go run ./cmd/squire cli remove playwright
 ```
 
-By default, Squire auto-detects components from project files. `--component <id>` selects reusable guidance manually, and `generate -i` opens a searchable selector. Applied component IDs are saved in the managed comment so later generations use the same set.
+By default, Squire auto-detects components from current project files. `--component <id>` selects reusable guidance for that generation, and `generate -i` opens a searchable selector. Squire does not write project-local metadata; rerun with explicit components when a choice cannot be detected from files.
 
-## Squire Markers
+## Markerless Guides
 
-Generated sections are wrapped in HTML comments:
+Generated `AGENTS.md` and `CLAUDE.md` files are plain Markdown with stable section headings.
 
-```markdown
-<!-- squire:start id=technology-stack required=true -->
-## Technology Stack
-
-- Go
-<!-- squire:end id=technology-stack -->
-```
-
-`squire analyze` uses those markers to detect missing required sections. For Claude Code, HTML comments are stripped before context injection, so the markers are maintenance metadata rather than model-facing guidance.
+`squire analyze` uses headings to detect missing required sections. Regeneration also uses headings to preserve the `Squire Custom Notes` section and to decide whether an existing markerless guide has Squire's expected shape.
 
 Generated `AGENTS.md` includes a `Squire Custom Notes` section. Add project-specific notes there; Squire preserves that section across regeneration.
 
@@ -92,6 +85,8 @@ detectors:
 guidance:
   technologies:
     - Frontend uses SvelteKit.
+  design:
+    - Read `DESIGN.md` before frontend/UI changes when present.
 ```
 
 Add global CLI tools with `squire cli add` or by editing `config.yaml`:
