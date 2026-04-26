@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -9,10 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -20,12 +23,25 @@ import (
 	"squire/internal/config"
 )
 
+const defaultProviderSource = "AndreBaltazar8/squire-components"
+
 type componentSource struct {
 	Owner    string
 	Repo     string
 	Ref      string
 	Path     string
 	Selector string
+}
+
+func (source componentSource) String() string {
+	value := source.Owner + "/" + source.Repo
+	if source.Path != "" {
+		value += "/" + strings.Trim(source.Path, "/")
+	}
+	if source.Ref != "" {
+		value += "@" + source.Ref
+	}
+	return value
 }
 
 type githubContent struct {
@@ -36,6 +52,44 @@ type githubContent struct {
 	Content     string          `json:"content"`
 	Encoding    string          `json:"encoding"`
 	Items       []githubContent `json:"-"`
+}
+
+type providerManifest struct {
+	Version     int    `yaml:"version" json:"version"`
+	ID          string `yaml:"id" json:"id"`
+	Name        string `yaml:"name" json:"name"`
+	Description string `yaml:"description" json:"description"`
+	Components  string `yaml:"components" json:"components"`
+}
+
+type providerIndex struct {
+	Version   int                 `yaml:"version" json:"version"`
+	Providers []providerReference `yaml:"providers" json:"providers"`
+}
+
+type providerReference struct {
+	ID          string `yaml:"id" json:"id"`
+	Name        string `yaml:"name" json:"name"`
+	Source      string `yaml:"source" json:"source"`
+	Description string `yaml:"description" json:"description"`
+}
+
+type remoteProvider struct {
+	ID            string
+	Name          string
+	Description   string
+	Source        componentSource
+	SourceString  string
+	ComponentsDir string
+	Components    []remoteComponent
+}
+
+type remoteComponent struct {
+	ID          string
+	FileName    string
+	Path        string
+	Description string
+	Body        []byte
 }
 
 func newDownloadCommand(opts *rootOptions) *cobra.Command {
@@ -158,46 +212,215 @@ func splitPath(value string) []string {
 }
 
 func downloadComponents(source componentSource) ([]downloadedComponent, error) {
-	var candidates []githubContent
-	searchPaths := []string{source.Path}
-	if source.Path == "" {
-		searchPaths = []string{"components", ""}
+	provider, err := loadProvider(source, providerReference{})
+	if err != nil {
+		return nil, err
 	}
-	for _, dir := range searchPaths {
-		items, err := githubList(source, dir)
+	var out []downloadedComponent
+	for _, component := range provider.Components {
+		if source.Selector != "" && source.Selector != component.ID && source.Selector != strings.TrimSuffix(component.FileName, filepath.Ext(component.FileName)) {
+			continue
+		}
+		out = append(out, downloadedComponent{
+			ID:       component.ID,
+			FileName: component.ID + ".yaml",
+			Body:     component.Body,
+		})
+	}
+	return out, nil
+}
+
+func browseProviders(source componentSource) ([]remoteProvider, error) {
+	refs, ok, err := readProviderIndex(source)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		provider, err := loadProvider(source, providerReference{})
 		if err != nil {
-			if isGithubNotFound(err) {
-				continue
-			}
 			return nil, err
 		}
-		for _, item := range items {
-			if item.Type == "file" && isYAML(item.Name) {
-				candidates = append(candidates, item)
+		return filterProviderComponents([]remoteProvider{provider}, source.Selector), nil
+	}
+
+	var providers []remoteProvider
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		providerSource := source
+		if strings.TrimSpace(ref.Source) != "" {
+			providerSource, err = parseComponentSource(ref.Source)
+			if err != nil {
+				return nil, err
 			}
+		}
+		providerSource.Selector = source.Selector
+		key := providerSource.String()
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		provider, err := loadProvider(providerSource, ref)
+		if err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
+	}
+	return filterProviderComponents(providers, source.Selector), nil
+}
+
+func loadProvider(source componentSource, ref providerReference) (remoteProvider, error) {
+	manifest, ok, err := readProviderManifest(source)
+	if err != nil {
+		return remoteProvider{}, err
+	}
+	if !ok {
+		manifest = providerManifest{
+			ID:          source.Repo,
+			Name:        source.Repo,
+			Description: ref.Description,
+			Components:  "components",
+		}
+	}
+	if manifest.ID == "" {
+		manifest.ID = firstNonEmpty(ref.ID, source.Repo)
+	}
+	if manifest.Name == "" {
+		manifest.Name = firstNonEmpty(ref.Name, manifest.ID)
+	}
+	if manifest.Description == "" {
+		manifest.Description = ref.Description
+	}
+	componentsDir := componentDir(source, manifest)
+	components, err := readRemoteComponents(source, componentsDir)
+	if err != nil {
+		if isGithubNotFound(err) {
+			return remoteProvider{
+				ID:            manifest.ID,
+				Name:          manifest.Name,
+				Description:   manifest.Description,
+				Source:        source,
+				SourceString:  source.String(),
+				ComponentsDir: componentsDir,
+			}, nil
+		}
+		return remoteProvider{}, err
+	}
+	return remoteProvider{
+		ID:            manifest.ID,
+		Name:          manifest.Name,
+		Description:   manifest.Description,
+		Source:        source,
+		SourceString:  source.String(),
+		ComponentsDir: componentsDir,
+		Components:    components,
+	}, nil
+}
+
+func readProviderManifest(source componentSource) (providerManifest, bool, error) {
+	body, err := githubReadFile(source, "provider.yaml")
+	if err != nil {
+		if isGithubNotFound(err) {
+			return providerManifest{}, false, nil
+		}
+		return providerManifest{}, false, err
+	}
+	var manifest providerManifest
+	if err := yaml.Unmarshal(body, &manifest); err != nil {
+		return providerManifest{}, false, err
+	}
+	return manifest, true, nil
+}
+
+func readProviderIndex(source componentSource) ([]providerReference, bool, error) {
+	body, err := githubReadFile(source, "providers.yaml")
+	if err != nil {
+		if isGithubNotFound(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	var index providerIndex
+	if err := yaml.Unmarshal(body, &index); err != nil {
+		return nil, false, err
+	}
+	return index.Providers, true, nil
+}
+
+func readRemoteComponents(source componentSource, dir string) ([]remoteComponent, error) {
+	items, err := githubList(source, dir)
+	if err != nil {
+		return nil, err
+	}
+	var candidates []githubContent
+	for _, item := range items {
+		if item.Type == "file" && isYAML(item.Name) {
+			candidates = append(candidates, item)
 		}
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return candidates[i].Path < candidates[j].Path
 	})
 
-	var out []downloadedComponent
+	var components []remoteComponent
 	for _, candidate := range candidates {
 		body, err := githubReadFile(source, candidate.Path)
 		if err != nil {
 			return nil, err
 		}
-		id := componentID(body, candidate.Name)
-		if source.Selector != "" && source.Selector != id && source.Selector != strings.TrimSuffix(candidate.Name, filepath.Ext(candidate.Name)) {
-			continue
-		}
-		out = append(out, downloadedComponent{
-			ID:       id,
-			FileName: id + ".yaml",
-			Body:     body,
+		component := componentMeta(body, candidate.Name)
+		components = append(components, remoteComponent{
+			ID:          component.ID,
+			FileName:    candidate.Name,
+			Path:        candidate.Path,
+			Description: component.Description,
+			Body:        body,
 		})
 	}
-	return out, nil
+	sort.SliceStable(components, func(i, j int) bool {
+		return components[i].ID < components[j].ID
+	})
+	return components, nil
+}
+
+func componentDir(source componentSource, manifest providerManifest) string {
+	if strings.TrimSpace(source.Path) != "" {
+		return strings.Trim(strings.TrimSpace(source.Path), "/")
+	}
+	if strings.TrimSpace(manifest.Components) != "" {
+		return strings.Trim(strings.TrimSpace(manifest.Components), "/")
+	}
+	return "components"
+}
+
+func filterProviderComponents(providers []remoteProvider, selector string) []remoteProvider {
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return providers
+	}
+	var out []remoteProvider
+	for _, provider := range providers {
+		filtered := provider.Components[:0]
+		for _, component := range provider.Components {
+			if selector == component.ID || selector == strings.TrimSuffix(component.FileName, filepath.Ext(component.FileName)) {
+				filtered = append(filtered, component)
+			}
+		}
+		provider.Components = filtered
+		if len(provider.Components) > 0 {
+			out = append(out, provider)
+		}
+	}
+	return out
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func githubList(source componentSource, dir string) ([]githubContent, error) {
@@ -259,6 +482,9 @@ func githubGET(endpoint string, target any) error {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "squire")
+	if token := githubToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -266,7 +492,8 @@ func githubGET(endpoint string, target any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &githubStatusError{StatusCode: resp.StatusCode, Status: resp.Status}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return &githubStatusError{StatusCode: resp.StatusCode, Status: resp.Status, Body: strings.TrimSpace(string(body))}
 	}
 	return json.NewDecoder(resp.Body).Decode(target)
 }
@@ -274,10 +501,40 @@ func githubGET(endpoint string, target any) error {
 type githubStatusError struct {
 	StatusCode int
 	Status     string
+	Body       string
 }
 
 func (err *githubStatusError) Error() string {
+	if err.Body != "" {
+		return "GitHub API returned " + err.Status + ": " + err.Body
+	}
 	return "GitHub API returned " + err.Status
+}
+
+var (
+	cachedGitHubToken  string
+	checkedGitHubToken bool
+)
+
+func githubToken() string {
+	if token := strings.TrimSpace(os.Getenv("GH_TOKEN")); token != "" {
+		return token
+	}
+	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+		return token
+	}
+	if checkedGitHubToken {
+		return cachedGitHubToken
+	}
+	checkedGitHubToken = true
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
+	if err != nil {
+		return ""
+	}
+	cachedGitHubToken = strings.TrimSpace(string(out))
+	return cachedGitHubToken
 }
 
 func isGithubNotFound(err error) bool {
@@ -291,9 +548,17 @@ func isYAML(name string) bool {
 }
 
 func componentID(body []byte, filename string) string {
+	return componentMeta(body, filename).ID
+}
+
+func componentMeta(body []byte, filename string) config.Component {
 	var component config.Component
-	if err := yaml.Unmarshal(body, &component); err == nil && strings.TrimSpace(component.ID) != "" {
-		return strings.TrimSpace(component.ID)
+	if err := yaml.Unmarshal(body, &component); err != nil {
+		component = config.Component{}
 	}
-	return strings.TrimSuffix(filename, filepath.Ext(filename))
+	if strings.TrimSpace(component.ID) == "" {
+		component.ID = strings.TrimSuffix(filename, filepath.Ext(filename))
+	}
+	component.ID = strings.TrimSpace(component.ID)
+	return component
 }

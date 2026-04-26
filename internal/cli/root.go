@@ -36,6 +36,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().StringVar(&opts.ConfigDir, "config-dir", "", "config directory (default: ~/.config/squire or SQUIRE_CONFIG_DIR)")
 	root.PersistentFlags().StringVar(&opts.CWD, "cwd", "", "project working directory (default: current directory)")
 
+	root.AddCommand(newBrowseCommand(opts))
 	root.AddCommand(newCLICommand(opts))
 	root.AddCommand(newDetectCommand(opts))
 	root.AddCommand(newDownloadCommand(opts))
