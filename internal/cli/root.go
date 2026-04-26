@@ -38,6 +38,7 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(newBrowseCommand(opts))
 	root.AddCommand(newCLICommand(opts))
+	root.AddCommand(newComponentCommand(opts))
 	root.AddCommand(newDetectCommand(opts))
 	root.AddCommand(newDownloadCommand(opts))
 	root.AddCommand(newAnalyzeCommand(opts))

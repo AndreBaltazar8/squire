@@ -67,6 +67,27 @@ type providerIndex struct {
 	Providers []providerReference `yaml:"providers" json:"providers"`
 }
 
+type componentCatalog struct {
+	Version     int               `yaml:"version" json:"version"`
+	GeneratedAt string            `yaml:"generated_at" json:"generated_at"`
+	Providers   []catalogProvider `yaml:"providers" json:"providers"`
+}
+
+type catalogProvider struct {
+	ID            string             `yaml:"id" json:"id"`
+	Name          string             `yaml:"name" json:"name"`
+	Description   string             `yaml:"description" json:"description"`
+	Source        string             `yaml:"source" json:"source"`
+	ComponentsDir string             `yaml:"components_dir" json:"components_dir"`
+	Components    []catalogComponent `yaml:"components" json:"components"`
+}
+
+type catalogComponent struct {
+	ID          string `yaml:"id" json:"id"`
+	Description string `yaml:"description" json:"description"`
+	Path        string `yaml:"path" json:"path"`
+}
+
 type providerReference struct {
 	ID          string `yaml:"id" json:"id"`
 	Name        string `yaml:"name" json:"name"`
@@ -125,29 +146,7 @@ func newDownloadCommand(opts *rootOptions) *cobra.Command {
 				return fmt.Errorf("no components found in %s/%s", source.Owner, source.Repo)
 			}
 
-			componentsDir := filepath.Join(configDir, config.ComponentsDir)
-			if err := os.MkdirAll(componentsDir, 0o755); err != nil {
-				return err
-			}
-			for _, component := range downloaded {
-				target := filepath.Join(componentsDir, component.FileName)
-				if !force {
-					if existing, err := os.ReadFile(target); err == nil {
-						if string(existing) == string(component.Body) {
-							fmt.Fprintf(cmd.OutOrStdout(), "kept %s\n", target)
-							continue
-						}
-						return fmt.Errorf("%s already exists and differs; rerun with --force to overwrite", target)
-					} else if !errors.Is(err, os.ErrNotExist) {
-						return err
-					}
-				}
-				if err := os.WriteFile(target, component.Body, 0o644); err != nil {
-					return err
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "downloaded %s\n", target)
-			}
-			return nil
+			return installDownloadedComponents(cmd, configDir, downloaded, force)
 		},
 	}
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite existing local components")
@@ -231,6 +230,12 @@ func downloadComponents(source componentSource) ([]downloadedComponent, error) {
 }
 
 func browseProviders(source componentSource) ([]remoteProvider, error) {
+	if providers, ok, err := readComponentCatalog(source); err != nil {
+		return nil, err
+	} else if ok {
+		return filterProviderComponents(providers, source.Selector), nil
+	}
+
 	refs, ok, err := readProviderIndex(source)
 	if err != nil {
 		return nil, err
@@ -266,6 +271,67 @@ func browseProviders(source componentSource) ([]remoteProvider, error) {
 		providers = append(providers, provider)
 	}
 	return filterProviderComponents(providers, source.Selector), nil
+}
+
+func readComponentCatalog(source componentSource) ([]remoteProvider, bool, error) {
+	if strings.TrimSpace(source.Path) != "" {
+		return nil, false, nil
+	}
+	body, err := githubReadFile(source, "index.yaml")
+	if err != nil {
+		if isGithubNotFound(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	var catalog componentCatalog
+	if err := yaml.Unmarshal(body, &catalog); err != nil {
+		return nil, false, err
+	}
+	providers, err := catalogProviders(source, catalog)
+	if err != nil {
+		return nil, false, err
+	}
+	return providers, true, nil
+}
+
+func catalogProviders(source componentSource, catalog componentCatalog) ([]remoteProvider, error) {
+	providers := make([]remoteProvider, 0, len(catalog.Providers))
+	for _, item := range catalog.Providers {
+		providerSource := source
+		if item.Source != "" {
+			parsed, err := parseComponentSource(item.Source)
+			if err != nil {
+				return nil, err
+			}
+			providerSource = parsed
+		}
+		providerSource.Selector = source.Selector
+		provider := remoteProvider{
+			ID:            item.ID,
+			Name:          item.Name,
+			Description:   item.Description,
+			Source:        providerSource,
+			SourceString:  providerSource.String(),
+			ComponentsDir: firstNonEmpty(item.ComponentsDir, "components"),
+		}
+		for _, component := range item.Components {
+			provider.Components = append(provider.Components, remoteComponent{
+				ID:          component.ID,
+				FileName:    filepath.Base(component.Path),
+				Path:        component.Path,
+				Description: component.Description,
+			})
+		}
+		sort.SliceStable(provider.Components, func(i, j int) bool {
+			return provider.Components[i].ID < provider.Components[j].ID
+		})
+		providers = append(providers, provider)
+	}
+	sort.SliceStable(providers, func(i, j int) bool {
+		return providers[i].ID < providers[j].ID
+	})
+	return providers, nil
 }
 
 func loadProvider(source componentSource, ref providerReference) (remoteProvider, error) {
@@ -438,6 +504,42 @@ func githubList(source componentSource, dir string) ([]githubContent, error) {
 		return nil, err
 	}
 	return []githubContent{single}, nil
+}
+
+func installDownloadedComponents(cmd *cobra.Command, configDir string, downloaded []downloadedComponent, force bool) error {
+	if configDir == "" {
+		var err error
+		configDir, err = config.DefaultConfigDir()
+		if err != nil {
+			return err
+		}
+	}
+	if err := config.EnsureDefaults(configDir); err != nil {
+		return err
+	}
+	componentsDir := filepath.Join(configDir, config.ComponentsDir)
+	if err := os.MkdirAll(componentsDir, 0o755); err != nil {
+		return err
+	}
+	for _, component := range downloaded {
+		target := filepath.Join(componentsDir, component.FileName)
+		if !force {
+			if existing, err := os.ReadFile(target); err == nil {
+				if string(existing) == string(component.Body) {
+					fmt.Fprintf(cmd.OutOrStdout(), "kept %s\n", target)
+					continue
+				}
+				return fmt.Errorf("%s already exists and differs; rerun with --force to overwrite", target)
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+		if err := os.WriteFile(target, component.Body, 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "downloaded %s\n", target)
+	}
+	return nil
 }
 
 func githubReadFile(source componentSource, filePath string) ([]byte, error) {

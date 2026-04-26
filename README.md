@@ -38,7 +38,12 @@ go run ./cmd/squire download AndreBaltazar8/squire-components#svelte
 
 # Browse public component providers
 go run ./cmd/squire browse
+go run ./cmd/squire browse -i
 go run ./cmd/squire browse AndreBaltazar8/squire-components#svelte
+
+# Manage installed components
+go run ./cmd/squire component list
+go run ./cmd/squire component remove svelte
 
 # Check section coverage in existing files
 go run ./cmd/squire analyze
@@ -75,7 +80,7 @@ Squire creates its global config file on first use:
 
 Optional components live in `~/.config/squire/components/*.yaml`. Components can detect files or be selected during generation, then add guidance, commands, and CLI tools to generated agent files.
 
-Use `squire browse` to list public providers from `AndreBaltazar8/squire-components`. Use `squire download <owner>/<repo>` to install all components from a GitHub provider, or append `#component-id` to install one. A provider can define `provider.yaml` with `components: <dir>`; otherwise Squire looks for `components/`.
+Use `squire browse` to list public providers from `AndreBaltazar8/squire-components`. Use `squire browse -i` to search and install interactively. Browse reads `index.yaml` when present, then falls back to provider discovery. Use `squire download <owner>/<repo>` to install all components from a GitHub provider, or append `#component-id` to install one. A provider can define `provider.yaml` with `components: <dir>`; otherwise Squire looks for `components/`.
 
 ```yaml
 version: 1

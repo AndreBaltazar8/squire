@@ -209,8 +209,17 @@ func EnsureDefaults(configDir string) error {
 	}
 
 	componentsDir := filepath.Join(configDir, ComponentsDir)
+	seedComponents := false
+	if _, err := os.Stat(componentsDir); errors.Is(err, os.ErrNotExist) {
+		seedComponents = true
+	} else if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(componentsDir, 0o755); err != nil {
 		return err
+	}
+	if !seedComponents {
+		return nil
 	}
 	for _, component := range DefaultComponents {
 		path := filepath.Join(componentsDir, component.Name)
