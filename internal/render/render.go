@@ -5,9 +5,9 @@ import (
 	"strings"
 	"text/template"
 
-	"squire/internal/config"
-	"squire/internal/guide"
-	"squire/internal/project"
+	"github.com/AndreBaltazar8/squire/internal/config"
+	"github.com/AndreBaltazar8/squire/internal/guide"
+	"github.com/AndreBaltazar8/squire/internal/project"
 )
 
 type Context struct {

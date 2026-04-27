@@ -1,6 +1,22 @@
 # Squire
 
-Squire normalizes the project instruction files used by coding agents. It gives a project consistent markerless `AGENTS.md` and `CLAUDE.md` files, keeps them analyzable by stable headings, and stores reusable agent/tool preferences under `~/.config/squire`.
+Squire normalizes the project instruction files used by coding agents. It gives a project consistent markerless `AGENTS.md` and `CLAUDE.md` files, keeps them analyzable by stable headings, and stores reusable agent/tool preferences under `~/.config/squire` (or `~/Library/Application Support/squire` on macOS).
+
+## Install
+
+```bash
+go install github.com/AndreBaltazar8/squire/cmd/squire@latest
+```
+
+This drops the `squire` binary in `$(go env GOBIN)` (or `$(go env GOPATH)/bin`, default `~/go/bin`). Make sure that directory is on your `PATH`. Squire targets the Go toolchain declared in `go.mod`; older installed Go versions still work as long as `GOTOOLCHAIN=auto` (the default since Go 1.21) is in effect.
+
+To work from a clone instead:
+
+```bash
+git clone https://github.com/AndreBaltazar8/squire.git
+cd squire
+go install ./cmd/squire
+```
 
 ## Why
 
@@ -19,40 +35,40 @@ When a project has `DESIGN.md` or `design.md`, Squire surfaces it as the visual 
 
 ```bash
 # See configured agents and CLI tools, with PATH detection
-go run ./cmd/squire detect
+squire detect
 
 # Generate AGENTS.md and CLAUDE.md in the current project
-go run ./cmd/squire generate all
+squire generate all
 
 # Select reusable guidance for a new/empty project
-go run ./cmd/squire generate all -i --project-name myapp
+squire generate all -i --project-name myapp
 
 # Generate with explicit components
-go run ./cmd/squire generate all --component svelte --component go-api --project-name myapp
+squire generate all --component svelte --component go-api --project-name myapp
 
 # Preview output without writing
-go run ./cmd/squire generate all --stdout
+squire generate all --stdout
 
 # Download public component definitions
-go run ./cmd/squire download AndreBaltazar8/squire-components
-go run ./cmd/squire download AndreBaltazar8/squire-components#svelte
+squire download AndreBaltazar8/squire-components
+squire download AndreBaltazar8/squire-components#svelte
 
 # Browse public component providers
-go run ./cmd/squire browse
-go run ./cmd/squire browse -i
-go run ./cmd/squire browse AndreBaltazar8/squire-components#svelte
+squire browse
+squire browse -i
+squire browse AndreBaltazar8/squire-components#svelte
 
 # Manage installed components
-go run ./cmd/squire component list
-go run ./cmd/squire component remove svelte
+squire component list
+squire component remove svelte
 
 # Check section coverage in existing files
-go run ./cmd/squire analyze
+squire analyze
 
 # Manage CLI tools that generated guides expose to agents
-go run ./cmd/squire cli list
-go run ./cmd/squire cli add playwright --description "Rendered UI helper." --when "Use for rendered UI verification." --example "playwright test"
-go run ./cmd/squire cli remove playwright
+squire cli list
+squire cli add playwright --description "Rendered UI helper." --when "Use for rendered UI verification." --example "playwright test"
+squire cli remove playwright
 ```
 
 By default, Squire auto-detects components from current project files. Add a project-root `squire.yaml` when a project should pin components explicitly, and use `--component <id>` for one-off additions during a generation. `generate -i` opens a searchable selector.
@@ -95,6 +111,18 @@ guidance:
     - Frontend uses SvelteKit.
   design:
     - Read `DESIGN.md` before frontend/UI changes when present.
+```
+
+Detector entries are either a bare path/glob (existence check) or an object with `file`, `contains`, or `regex` for content-aware matching. Use the latter to avoid false positives when a generic file name doesn't tell you which technology is in play:
+
+```yaml
+detectors:
+  any:
+    - pg_hba.conf                       # bare glob: file must exist
+    - file: docker-compose.yml          # content match: file exists AND
+      contains: postgres                # body contains substring (case-insensitive)
+    - file: package.json
+      regex: '"(pg|postgres)"\s*:'      # or matches regex (also case-insensitive)
 ```
 
 Add global CLI tools with `squire cli add` or by editing `config.yaml`:

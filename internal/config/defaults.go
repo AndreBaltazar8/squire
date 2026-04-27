@@ -102,17 +102,110 @@ id: postgres
 description: PostgreSQL guidance.
 detectors:
   any:
-    - docker-compose.yml
-    - compose.yaml
-    - migrations
-    - db
+    - pg_hba.conf
+    - postgresql.conf
+    - "*.psql"
+    - file: docker-compose.yml
+      contains: postgres
+    - file: docker-compose.yaml
+      contains: postgres
+    - file: compose.yml
+      contains: postgres
+    - file: compose.yaml
+      contains: postgres
+    - file: package.json
+      regex: '"(pg|postgres|postgresql|node-postgres)"\s*:'
 guidance:
   technologies:
-    - "Persistence uses PostgreSQL when configured."
+    - "Persistence uses PostgreSQL."
   environment:
-    - "DATABASE_URL configures PostgreSQL connections."
+    - "DATABASE_URL or PG* env vars configure PostgreSQL connections."
   verification:
     - "Database changes need migration/reset verification when scripts exist."
+`,
+	},
+	{
+		Name: "mysql.yaml",
+		Body: `version: 1
+id: mysql
+description: MySQL/MariaDB guidance.
+detectors:
+  any:
+    - my.cnf
+    - mysql.cnf
+    - mariadb.cnf
+    - file: docker-compose.yml
+      regex: 'image:\s*["'']?(mysql|mariadb|percona)'
+    - file: docker-compose.yaml
+      regex: 'image:\s*["'']?(mysql|mariadb|percona)'
+    - file: compose.yml
+      regex: 'image:\s*["'']?(mysql|mariadb|percona)'
+    - file: compose.yaml
+      regex: 'image:\s*["'']?(mysql|mariadb|percona)'
+    - file: package.json
+      regex: '"(mysql|mysql2|mariadb)"\s*:'
+guidance:
+  technologies:
+    - "Persistence uses MySQL."
+  environment:
+    - "MYSQL_* env vars configure MySQL connections."
+  verification:
+    - "Database changes need migration/reset verification when scripts exist."
+`,
+	},
+	{
+		Name: "mongodb.yaml",
+		Body: `version: 1
+id: mongodb
+description: MongoDB guidance.
+detectors:
+  any:
+    - mongod.conf
+    - mongodb.conf
+    - file: docker-compose.yml
+      regex: 'image:\s*["'']?mongo'
+    - file: docker-compose.yaml
+      regex: 'image:\s*["'']?mongo'
+    - file: compose.yml
+      regex: 'image:\s*["'']?mongo'
+    - file: compose.yaml
+      regex: 'image:\s*["'']?mongo'
+    - file: package.json
+      regex: '"(mongodb|mongoose)"\s*:'
+    - file: go.mod
+      regex: 'go\.mongodb\.org/mongo-driver'
+guidance:
+  technologies:
+    - "Document store uses MongoDB."
+  environment:
+    - "MONGO_URL or MONGODB_URI configures MongoDB connections."
+`,
+	},
+	{
+		Name: "redis.yaml",
+		Body: `version: 1
+id: redis
+description: Redis guidance.
+detectors:
+  any:
+    - redis.conf
+    - file: docker-compose.yml
+      regex: 'image:\s*["'']?redis'
+    - file: docker-compose.yaml
+      regex: 'image:\s*["'']?redis'
+    - file: compose.yml
+      regex: 'image:\s*["'']?redis'
+    - file: compose.yaml
+      regex: 'image:\s*["'']?redis'
+    - file: package.json
+      regex: '"(redis|ioredis)"\s*:'
+    - file: go.mod
+      regex: 'github\.com/(go-redis|redis)/'
+guidance:
+  technologies:
+    - "Cache/queue uses Redis."
+  environment:
+    - "REDIS_URL configures Redis connections."
 `,
 	},
 	{

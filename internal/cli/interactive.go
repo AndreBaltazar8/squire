@@ -13,8 +13,8 @@ import (
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
-	"squire/internal/config"
-	"squire/internal/project"
+	"github.com/AndreBaltazar8/squire/internal/config"
+	"github.com/AndreBaltazar8/squire/internal/project"
 )
 
 type componentPickerItem struct {

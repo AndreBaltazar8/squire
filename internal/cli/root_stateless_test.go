@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"squire/internal/config"
-	"squire/internal/project"
-	"squire/internal/render"
+	"github.com/AndreBaltazar8/squire/internal/config"
+	"github.com/AndreBaltazar8/squire/internal/project"
+	"github.com/AndreBaltazar8/squire/internal/render"
 )
 
 func TestResolveGenerationComponentsIsStatelessWithoutExplicitSelection(t *testing.T) {
@@ -26,7 +26,7 @@ func TestResolveGenerationComponentsIsStatelessWithoutExplicitSelection(t *testi
 func TestResolveGenerationComponentsUsesProjectConfig(t *testing.T) {
 	dir := t.TempDir()
 	components := []config.Component{
-		{ID: "go", Detectors: config.ComponentDetectors{Any: []string{"go.mod"}}},
+		{ID: "go", Detectors: config.ComponentDetectors{Any: []config.DetectorRule{{Glob: "go.mod"}}}},
 		{ID: "svelte"},
 	}
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module demo\n"), 0o644); err != nil {

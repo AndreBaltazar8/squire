@@ -3,7 +3,7 @@ package analyze
 import (
 	"testing"
 
-	"squire/internal/guide"
+	"github.com/AndreBaltazar8/squire/internal/guide"
 )
 
 func TestFileReportsMissingSections(t *testing.T) {

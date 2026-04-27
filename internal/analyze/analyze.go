@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"squire/internal/guide"
+	"github.com/AndreBaltazar8/squire/internal/guide"
 )
 
 type Report struct {

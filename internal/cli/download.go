@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"squire/internal/config"
+	"github.com/AndreBaltazar8/squire/internal/config"
 )
 
 const defaultProviderSource = "AndreBaltazar8/squire-components"

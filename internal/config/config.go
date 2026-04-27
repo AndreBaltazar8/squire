@@ -50,8 +50,51 @@ type Component struct {
 }
 
 type ComponentDetectors struct {
-	Any []string `yaml:"any" json:"any"`
-	All []string `yaml:"all" json:"all"`
+	Any []DetectorRule `yaml:"any" json:"any"`
+	All []DetectorRule `yaml:"all" json:"all"`
+}
+
+// DetectorRule is a single match condition. It accepts two YAML forms:
+//
+//	- some/path/glob              # bare string, treated as Glob
+//	- {file: name, contains: txt} # content-aware match
+//
+// A rule with only Glob (or only File) checks file existence. A rule with
+// Contains additionally requires the matched file to contain the substring
+// (case-insensitive). Regex, when set, is applied case-insensitively after
+// any Contains check.
+type DetectorRule struct {
+	Glob     string `yaml:"glob,omitempty" json:"glob,omitempty"`
+	File     string `yaml:"file,omitempty" json:"file,omitempty"`
+	Contains string `yaml:"contains,omitempty" json:"contains,omitempty"`
+	Regex    string `yaml:"regex,omitempty" json:"regex,omitempty"`
+}
+
+func (r *DetectorRule) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		r.Glob = node.Value
+		return nil
+	}
+	type alias DetectorRule
+	var raw alias
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+	*r = DetectorRule(raw)
+	return nil
+}
+
+// Pattern returns the file/glob pattern this rule operates on.
+func (r DetectorRule) Pattern() string {
+	if r.File != "" {
+		return r.File
+	}
+	return r.Glob
+}
+
+// NeedsContent reports whether the rule requires reading a file's content.
+func (r DetectorRule) NeedsContent() bool {
+	return r.Contains != "" || r.Regex != ""
 }
 
 type ComponentGuidance struct {
@@ -232,18 +275,12 @@ func EnsureDefaults(configDir string) error {
 	}
 
 	componentsDir := filepath.Join(configDir, ComponentsDir)
-	seedComponents := false
-	if _, err := os.Stat(componentsDir); errors.Is(err, os.ErrNotExist) {
-		seedComponents = true
-	} else if err != nil {
-		return err
-	}
 	if err := os.MkdirAll(componentsDir, 0o755); err != nil {
 		return err
 	}
-	if !seedComponents {
-		return nil
-	}
+	// Seed any default component that is not already present. Existing files
+	// are left alone so user edits are preserved across upgrades, while new
+	// defaults shipped in later versions still land on disk.
 	for _, component := range DefaultComponents {
 		path := filepath.Join(componentsDir, component.Name)
 		if _, err := os.Stat(path); err == nil {

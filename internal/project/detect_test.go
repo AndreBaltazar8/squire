@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"squire/internal/config"
+	"github.com/AndreBaltazar8/squire/internal/config"
 )
 
 func TestSelectedComponentsWorkForEmptyProject(t *testing.T) {
@@ -88,7 +88,7 @@ func TestDetectedComponentAddsGuidanceAndTools(t *testing.T) {
 		{
 			ID: "deploy",
 			Detectors: config.ComponentDetectors{
-				Any: []string{"deploy.yaml"},
+				Any: []config.DetectorRule{{Glob: "deploy.yaml"}},
 			},
 			Guidance: config.ComponentGuidance{
 				Commands: []config.ComponentCommand{{Command: "deployctl dev", Description: "local dev"}},
