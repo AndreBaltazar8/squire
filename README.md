@@ -89,13 +89,19 @@ Squire creates its global config file on first use:
 
 Optional components live in `~/.config/squire/components/*.yaml`. Components can detect files or be selected during generation, then add guidance, commands, and CLI tools to generated agent files.
 
-Project-local component selection lives in `squire.yaml`:
+Project-local settings live in `squire.yaml`:
 
 ```yaml
 components:
   - go
   - svelte
+description: |
+  myapp is a tiny in-memory key/value store with a JSON HTTP surface
+  and a small Go client library. It is used by services in the same
+  monorepo for ephemeral coordination state.
 ```
+
+`description`, when set, replaces the auto-detected Project Overview paragraph. Pin it when the README's first paragraph is not actually a description of the project — for example, when the README opens with a setup section, a "How to get started" prefix, or a meta disclaimer about the README itself.
 
 Use `squire browse` to list public providers from `AndreBaltazar8/squire-components`. Use `squire browse -i` to search and install interactively. Browse reads `index.yaml` when present, then falls back to provider discovery. Use `squire download <owner>/<repo>` to install all components from a GitHub provider, or append `#component-id` to install one. A provider can define `provider.yaml` with `components: <dir>`; otherwise Squire looks for `components/`.
 

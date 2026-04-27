@@ -23,6 +23,12 @@ type Config struct {
 
 type ProjectConfig struct {
 	Components []string `yaml:"components" json:"components"`
+	// Description, when set, overrides the auto-detected Project Overview
+	// paragraph. Pin it in `squire.yaml` when the README's first paragraph
+	// is not actually a description of the project (legacy READMEs that
+	// open with a setup section, "How to get started" prefixes, meta
+	// disclaimers about the README itself, etc.).
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 }
 
 type AgentConfig struct {
