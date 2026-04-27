@@ -167,7 +167,15 @@ func newDetectCommand(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			projectInfo, err := project.Detect(cwd, "", nil, components)
+			projectCfg, err := config.LoadProjectConfig(cwd)
+			if err != nil {
+				return err
+			}
+			selectedComponents, err := resolveGenerationComponents(cwd, nil, false, components, projectCfg)
+			if err != nil {
+				return err
+			}
+			projectInfo, err := project.Detect(cwd, "", selectedComponents, components)
 			if err != nil {
 				return err
 			}
@@ -205,11 +213,27 @@ func newAnalyzeCommand(opts *rootOptions) *cobra.Command {
 		Short: "Analyze Squire section coverage in AGENTS.md or CLAUDE.md",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, err := config.LoadConfig(opts.ConfigDir)
+			cfg, err := config.LoadConfig(opts.ConfigDir)
 			if err != nil {
 				return err
 			}
 			cwd, err := resolveCWD(opts.CWD)
+			if err != nil {
+				return err
+			}
+			components, err := config.LoadComponents(opts.ConfigDir)
+			if err != nil {
+				return err
+			}
+			projectCfg, err := config.LoadProjectConfig(cwd)
+			if err != nil {
+				return err
+			}
+			selectedComponents, err := resolveGenerationComponents(cwd, nil, false, components, projectCfg)
+			if err != nil {
+				return err
+			}
+			projectInfo, err := project.Detect(cwd, "", selectedComponents, components)
 			if err != nil {
 				return err
 			}
@@ -234,7 +258,7 @@ func newAnalyzeCommand(opts *rootOptions) *cobra.Command {
 				if !filepath.IsAbs(path) {
 					path = filepath.Join(cwd, path)
 				}
-				report, err := analyzePath(path)
+				report, err := analyzePath(path, cfg, projectInfo)
 				if err != nil {
 					return err
 				}
@@ -258,6 +282,9 @@ func newAnalyzeCommand(opts *rootOptions) *cobra.Command {
 				for _, report := range reports {
 					if !analyze.IsComplete(report) {
 						return fmt.Errorf("%s is missing required Squire sections", report.File)
+					}
+					if report.OutOfDate {
+						return fmt.Errorf("%s is out of date", report.File)
 					}
 				}
 			}
@@ -306,8 +333,12 @@ func newGenerateCommand(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			projectCfg, err := config.LoadProjectConfig(cwd)
+			if err != nil {
+				return err
+			}
 			componentExplicit := cmd.Flags().Changed("component")
-			selectedComponents, err := resolveGenerationComponents(cwd, target, componentFlags, componentExplicit, components)
+			selectedComponents, err := resolveGenerationComponents(cwd, componentFlags, componentExplicit, components, projectCfg)
 			if err != nil {
 				return err
 			}
@@ -415,14 +446,26 @@ func readPreservedSections(path string) (map[string]string, error) {
 	return render.PreservedSections(body), nil
 }
 
-func resolveGenerationComponents(cwd, target string, requested []string, explicit bool, components []config.Component) ([]string, error) {
+func resolveGenerationComponents(cwd string, requested []string, explicit bool, components []config.Component, projectCfg config.ProjectConfig) ([]string, error) {
+	configured := mergeComponentIDs(projectCfg.Components)
 	if explicit {
 		ids := parseComponentArgs(requested)
-		ids = mergeComponentIDs(project.DetectedComponentIDs(cwd, components), ids)
+		if len(configured) > 0 {
+			ids = mergeComponentIDs(configured, ids)
+		} else {
+			ids = mergeComponentIDs(project.DetectedComponentIDs(cwd, components), ids)
+		}
 		if err := validateComponentIDs(ids, components); err != nil {
 			return nil, err
 		}
 		return ids, nil
+	}
+
+	if len(configured) > 0 {
+		if err := validateComponentIDs(configured, components); err != nil {
+			return nil, err
+		}
+		return configured, nil
 	}
 
 	return nil, nil
@@ -534,7 +577,7 @@ func isSquireGeneratedFile(path string, body []byte) bool {
 	}
 }
 
-func analyzePath(path string) (analyze.Report, error) {
+func analyzePath(path string, cfg config.Config, projectInfo project.Info) (analyze.Report, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return analyze.Report{}, err
@@ -544,13 +587,26 @@ func analyzePath(path string) (analyze.Report, error) {
 		target = "claude"
 	}
 	expected := analyze.ExpectedForTarget(target)
-	return analyze.File(string(body), path, expected), nil
+	report := analyze.File(string(body), path, expected)
+	report.ExpectedComponents = projectInfo.Components
+
+	if filepath.Base(path) == guide.AgentsFile || filepath.Base(path) == guide.ClaudeFile {
+		preserved := render.PreservedSections(body)
+		expectedBody, err := renderTarget(filepath.Base(path), cfg, projectInfo, preserved)
+		if err != nil {
+			return analyze.Report{}, err
+		}
+		report.OutOfDate = string(body) != expectedBody
+	}
+	return report, nil
 }
 
 func printReport(cmd *cobra.Command, report analyze.Report) {
 	fmt.Fprintf(cmd.OutOrStdout(), "%s\n", report.File)
+	fmt.Fprintf(cmd.OutOrStdout(), "  components: %s\n", joinOrNone(report.ExpectedComponents))
 	fmt.Fprintf(cmd.OutOrStdout(), "  present: %s\n", joinOrNone(report.Present))
 	fmt.Fprintf(cmd.OutOrStdout(), "  missing: %s\n", joinOrNone(report.Missing))
+	fmt.Fprintf(cmd.OutOrStdout(), "  out of date: %t\n", report.OutOfDate)
 	if len(report.UntaggedMatches) > 0 {
 		values := make([]string, 0, len(report.UntaggedMatches))
 		for _, item := range report.UntaggedMatches {

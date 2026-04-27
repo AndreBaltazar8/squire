@@ -55,7 +55,7 @@ go run ./cmd/squire cli add playwright --description "Rendered UI helper." --whe
 go run ./cmd/squire cli remove playwright
 ```
 
-By default, Squire auto-detects components from current project files. `--component <id>` selects reusable guidance for that generation, and `generate -i` opens a searchable selector. Squire does not write project-local metadata; rerun with explicit components when a choice cannot be detected from files.
+By default, Squire auto-detects components from current project files. Add a project-root `squire.yaml` when a project should pin components explicitly, and use `--component <id>` for one-off additions during a generation. `generate -i` opens a searchable selector.
 
 ## Markerless Guides
 
@@ -72,6 +72,14 @@ Squire creates its global config file on first use:
 - `~/.config/squire/config.yaml`
 
 Optional components live in `~/.config/squire/components/*.yaml`. Components can detect files or be selected during generation, then add guidance, commands, and CLI tools to generated agent files.
+
+Project-local component selection lives in `squire.yaml`:
+
+```yaml
+components:
+  - go
+  - svelte
+```
 
 Use `squire browse` to list public providers from `AndreBaltazar8/squire-components`. Use `squire browse -i` to search and install interactively. Browse reads `index.yaml` when present, then falls back to provider discovery. Use `squire download <owner>/<repo>` to install all components from a GitHub provider, or append `#component-id` to install one. A provider can define `provider.yaml` with `components: <dir>`; otherwise Squire looks for `components/`.
 

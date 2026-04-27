@@ -695,6 +695,8 @@ func describePath(name string, dir bool) string {
 		return "JS manifest"
 	case "config.yaml":
 		return "project config"
+	case "squire.yaml":
+		return "Squire project config"
 	case "README.md":
 		return "overview"
 	case "DESIGN.md", "design.md":
@@ -706,7 +708,7 @@ func describePath(name string, dir bool) string {
 
 func isImportantRootFile(name string) bool {
 	switch name {
-	case "go.mod", "go.sum", "package.json", "README.md", "readme.md", "DESIGN.md", "design.md", "config.yaml", "Dockerfile", "docker-compose.yml", "compose.yaml", "pyproject.toml", "Cargo.toml":
+	case "go.mod", "go.sum", "package.json", "README.md", "readme.md", "DESIGN.md", "design.md", "config.yaml", "squire.yaml", "Dockerfile", "docker-compose.yml", "compose.yaml", "pyproject.toml", "Cargo.toml":
 		return true
 	default:
 		return false

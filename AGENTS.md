@@ -16,6 +16,7 @@
 - `go.mod` contains Go module.
 - `go.sum` contains Go lockfile.
 - `internal/` contains private Go packages.
+- `squire.yaml` contains Squire project config.
 
 ## Commands
 

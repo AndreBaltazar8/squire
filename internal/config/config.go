@@ -10,14 +10,19 @@ import (
 )
 
 const (
-	ConfigFileName = "config.yaml"
-	ComponentsDir  = "components"
+	ConfigFileName        = "config.yaml"
+	ComponentsDir         = "components"
+	ProjectConfigFileName = "squire.yaml"
 )
 
 type Config struct {
 	Version  int           `yaml:"version" json:"version"`
 	Agents   []AgentConfig `yaml:"agents" json:"agents"`
 	CLITools []ToolConfig  `yaml:"cli_tools" json:"cli_tools"`
+}
+
+type ProjectConfig struct {
+	Components []string `yaml:"components" json:"components"`
 }
 
 type AgentConfig struct {
@@ -140,6 +145,23 @@ func SaveConfig(configDir string, cfg Config) error {
 		return err
 	}
 	return os.Rename(tmpName, path)
+}
+
+func LoadProjectConfig(root string) (ProjectConfig, error) {
+	path := filepath.Join(root, ProjectConfigFileName)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ProjectConfig{}, nil
+		}
+		return ProjectConfig{}, err
+	}
+
+	var cfg ProjectConfig
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		return ProjectConfig{}, err
+	}
+	return cfg, nil
 }
 
 func LoadComponents(configDir string) ([]Component, error) {

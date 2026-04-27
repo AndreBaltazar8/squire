@@ -8,11 +8,13 @@ import (
 )
 
 type Report struct {
-	File             string            `json:"file"`
-	ExpectedRequired []string          `json:"expected_required"`
-	Present          []string          `json:"present"`
-	Missing          []string          `json:"missing"`
-	UntaggedMatches  []UntaggedHeading `json:"untagged_matches"`
+	File               string            `json:"file"`
+	ExpectedComponents []string          `json:"expected_components,omitempty"`
+	ExpectedRequired   []string          `json:"expected_required"`
+	Present            []string          `json:"present"`
+	Missing            []string          `json:"missing"`
+	OutOfDate          bool              `json:"out_of_date"`
+	UntaggedMatches    []UntaggedHeading `json:"untagged_matches"`
 }
 
 type UntaggedHeading struct {
