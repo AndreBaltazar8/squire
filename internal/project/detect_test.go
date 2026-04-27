@@ -307,6 +307,48 @@ func TestMixedSvelteGoWorkspaceDetection(t *testing.T) {
 	}
 }
 
+func TestSubprojectSummarySources(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "package.json"), `{
+  "name": "summary-workspace",
+  "workspaces": ["src/*"]
+}`)
+
+	// package.json description wins over README when both are present.
+	mustWrite(t, filepath.Join(dir, "src", "site-foo", "package.json"), `{
+  "name": "@example/site-foo",
+  "description": "Static site rendered at build time",
+  "scripts": {"dev": "vite dev", "build": "vite build"},
+  "devDependencies": {"vite": "^7.0.0"}
+}`)
+	mustWrite(t, filepath.Join(dir, "src", "site-foo", "README.md"), "# foo\n\nIgnored when description is set.\n")
+
+	// Falls back to README first paragraph when package.json description is empty.
+	mustWrite(t, filepath.Join(dir, "src", "svc-bar", "package.json"), `{
+  "name": "@example/svc-bar",
+  "scripts": {"dev": "bun run --watch src/index.ts"}
+}`)
+	mustWrite(t, filepath.Join(dir, "src", "svc-bar", "README.md"), "# bar\n\nDoes the bar thing for the example workspace.\n")
+
+	// Go subproject without package.json or README falls through to the bare sentence.
+	mustWrite(t, filepath.Join(dir, "src", "svc-baz", "main.go"), "package main\n\nfunc main() {}\n")
+
+	info, err := Detect(dir, "summary-workspace", nil, nil, config.ProjectConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !contains(info.Structure, "`src/site-foo` is Vite app `@example/site-foo` with scripts `dev`, `build` — Static site rendered at build time.") {
+		t.Fatalf("expected package.json description to win, got:\n%v", info.Structure)
+	}
+	if !contains(info.Structure, "`src/svc-bar` is service `@example/svc-bar` with scripts `dev` — Does the bar thing for the example workspace.") {
+		t.Fatalf("expected README fallback, got:\n%v", info.Structure)
+	}
+	if !contains(info.Structure, "`src/svc-baz` is Go service.") {
+		t.Fatalf("expected unsuffixed sentence when no summary source, got:\n%v", info.Structure)
+	}
+}
+
 func mustWrite(t *testing.T, path string, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
