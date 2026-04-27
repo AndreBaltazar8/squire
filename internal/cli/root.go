@@ -10,12 +10,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	agentpkg "squire/internal/agent"
-	"squire/internal/analyze"
-	"squire/internal/config"
-	"squire/internal/guide"
-	"squire/internal/project"
-	"squire/internal/render"
+	agentpkg "github.com/AndreBaltazar8/squire/internal/agent"
+	"github.com/AndreBaltazar8/squire/internal/analyze"
+	"github.com/AndreBaltazar8/squire/internal/config"
+	"github.com/AndreBaltazar8/squire/internal/guide"
+	"github.com/AndreBaltazar8/squire/internal/project"
+	"github.com/AndreBaltazar8/squire/internal/render"
 )
 
 type rootOptions struct {

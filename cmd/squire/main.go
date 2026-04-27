@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"squire/internal/cli"
+	"github.com/AndreBaltazar8/squire/internal/cli"
 )
 
 func main() {

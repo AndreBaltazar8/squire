@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"squire/internal/config"
+	"github.com/AndreBaltazar8/squire/internal/config"
 )
 
 func newComponentCommand(opts *rootOptions) *cobra.Command {

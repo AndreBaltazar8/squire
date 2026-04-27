@@ -1,4 +1,4 @@
-module squire
+module github.com/AndreBaltazar8/squire
 
 go 1.25.0
 

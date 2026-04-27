@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"squire/internal/config"
-	"squire/internal/guide"
-	"squire/internal/project"
+	"github.com/AndreBaltazar8/squire/internal/config"
+	"github.com/AndreBaltazar8/squire/internal/guide"
+	"github.com/AndreBaltazar8/squire/internal/project"
 )
 
 func TestClaudeImportsAgents(t *testing.T) {

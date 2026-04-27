@@ -3,7 +3,7 @@ package agent
 import (
 	"os/exec"
 
-	"squire/internal/config"
+	"github.com/AndreBaltazar8/squire/internal/config"
 )
 
 type Detection struct {

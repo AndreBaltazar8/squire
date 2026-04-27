@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
-	"squire/internal/config"
+	"github.com/AndreBaltazar8/squire/internal/config"
 )
 
 type Info struct {
@@ -158,17 +159,54 @@ func componentMatches(root string, component config.Component) bool {
 		return false
 	}
 	if len(detectors.All) > 0 {
-		for _, pattern := range detectors.All {
-			if !hasGlob(root, pattern) {
+		for _, rule := range detectors.All {
+			if !ruleMatches(root, rule) {
 				return false
 			}
 		}
 		return true
 	}
-	for _, pattern := range detectors.Any {
-		if hasGlob(root, pattern) {
+	for _, rule := range detectors.Any {
+		if ruleMatches(root, rule) {
 			return true
 		}
+	}
+	return false
+}
+
+func ruleMatches(root string, rule config.DetectorRule) bool {
+	pattern := rule.Pattern()
+	if pattern == "" {
+		return false
+	}
+	matches := glob(root, pattern)
+	if len(matches) == 0 {
+		return false
+	}
+	if !rule.NeedsContent() {
+		return true
+	}
+	needle := strings.ToLower(rule.Contains)
+	var pattern2 *regexp.Regexp
+	if rule.Regex != "" {
+		compiled, err := regexp.Compile("(?i)" + rule.Regex)
+		if err != nil {
+			return false
+		}
+		pattern2 = compiled
+	}
+	for _, rel := range matches {
+		body, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			continue
+		}
+		if needle != "" && !strings.Contains(strings.ToLower(string(body)), needle) {
+			continue
+		}
+		if pattern2 != nil && !pattern2.Match(body) {
+			continue
+		}
+		return true
 	}
 	return false
 }
