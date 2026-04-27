@@ -70,3 +70,36 @@ func TestPreservedSectionOverridesDefault(t *testing.T) {
 		t.Fatalf("preserved = %#v", preserved)
 	}
 }
+
+func TestToolsRenderStructured(t *testing.T) {
+	body, err := Agents(config.Config{
+		CLITools: []config.ToolConfig{{
+			Name:        "playwright",
+			Command:     "playwright",
+			Description: "Rendered UI helper",
+			When:        "Use for rendered UI verification",
+			Examples:    []string{"playwright test", "playwright codegen"},
+		}},
+	}, project.Info{Name: "demo"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wants := []string{
+		"- **`playwright`** (`playwright`) — Rendered UI helper.",
+		"  - When: Use for rendered UI verification.",
+		"  - Examples:",
+		"    - `playwright test`",
+		"    - `playwright codegen`",
+	}
+	for _, want := range wants {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in:\n%s", want, body)
+		}
+	}
+	// Make sure the old single-line semicolon shape is gone so nobody
+	// accidentally regresses the format.
+	if strings.Contains(body, "; examples:") {
+		t.Fatalf("old single-line tool render leaked through:\n%s", body)
+	}
+}

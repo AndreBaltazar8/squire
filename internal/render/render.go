@@ -267,28 +267,43 @@ func tools(items []config.ToolConfig) string {
 		if command == "" {
 			command = name
 		}
-		line := "- `" + name + "` (`" + command + "`)"
-		if item.Description != "" {
-			line += ": " + strings.TrimSuffix(item.Description, ".")
+		header := "- **`" + name + "`** (`" + command + "`)"
+		if desc := strings.TrimSpace(item.Description); desc != "" {
+			header += " — " + ensureTerminalPunctuation(desc)
 		}
-		if item.When != "" {
-			line += "; " + strings.TrimSuffix(item.When, ".")
+		out.WriteString(header + "\n")
+		if when := strings.TrimSpace(item.When); when != "" {
+			out.WriteString("  - When: " + ensureTerminalPunctuation(when) + "\n")
 		}
-		if len(item.Examples) > 0 {
-			examples := make([]string, 0, len(item.Examples))
-			for _, example := range item.Examples {
-				example = strings.TrimSpace(example)
-				if example != "" {
-					examples = append(examples, "`"+example+"`")
-				}
-			}
-			if len(examples) > 0 {
-				line += "; examples: " + strings.Join(examples, ", ")
+		examples := make([]string, 0, len(item.Examples))
+		for _, example := range item.Examples {
+			if example = strings.TrimSpace(example); example != "" {
+				examples = append(examples, example)
 			}
 		}
-		out.WriteString(line + "\n")
+		if len(examples) > 0 {
+			out.WriteString("  - Examples:\n")
+			for _, example := range examples {
+				out.WriteString("    - `" + example + "`\n")
+			}
+		}
 	}
 	return strings.TrimRight(out.String(), "\n")
+}
+
+// ensureTerminalPunctuation appends a `.` when the string doesn't already
+// end in terminal punctuation. Keeps the description / when fields reading
+// like complete sentences regardless of how the user typed them in
+// `squire cli add`.
+func ensureTerminalPunctuation(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[len(s)-1] {
+	case '.', '!', '?', ':', ';':
+		return s
+	}
+	return s + "."
 }
 
 func ensureTrailingNewline(value string) string {

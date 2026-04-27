@@ -137,6 +137,39 @@ func TestDetectDesignFileAddsGuidance(t *testing.T) {
 	}
 }
 
+func TestStructureDescribesMonorepoTopLevelDirs(t *testing.T) {
+	dir := t.TempDir()
+	for _, sub := range []string{"pkg-go", "infra", "k8s", "helm", "docker", "specs", "db", "migrations", "terraform"} {
+		mustWrite(t, filepath.Join(dir, sub, ".keep"), "")
+	}
+	mustWrite(t, filepath.Join(dir, "Makefile"), "build:\n")
+	mustWrite(t, filepath.Join(dir, "Cargo.toml"), "[package]\nname = \"x\"\n")
+
+	info, err := Detect(dir, "demo", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wants := []string{
+		"`pkg-go/` contains shared Go packages.",
+		"`infra/` contains infrastructure-as-code.",
+		"`k8s/` contains Kubernetes manifests.",
+		"`helm/` contains Helm chart values.",
+		"`docker/` contains Dockerfiles.",
+		"`specs/` contains feature specs and RFCs.",
+		"`db/` contains database schema and tooling.",
+		"`migrations/` contains database migrations.",
+		"`terraform/` contains Terraform IaC.",
+		"`Makefile` contains Make targets.",
+		"`Cargo.toml` contains Rust manifest.",
+	}
+	for _, want := range wants {
+		if !contains(info.Structure, want) {
+			t.Fatalf("missing %q in structure:\n%v", want, info.Structure)
+		}
+	}
+}
+
 func TestSelectedComponentWorksWithoutDetectorMatch(t *testing.T) {
 	dir := t.TempDir()
 
