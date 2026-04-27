@@ -175,7 +175,7 @@ func newDetectCommand(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			projectInfo, err := project.Detect(cwd, "", selectedComponents, components)
+			projectInfo, err := project.Detect(cwd, "", selectedComponents, components, projectCfg)
 			if err != nil {
 				return err
 			}
@@ -233,7 +233,7 @@ func newAnalyzeCommand(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			projectInfo, err := project.Detect(cwd, "", selectedComponents, components)
+			projectInfo, err := project.Detect(cwd, "", selectedComponents, components, projectCfg)
 			if err != nil {
 				return err
 			}
@@ -348,7 +348,7 @@ func newGenerateCommand(opts *rootOptions) *cobra.Command {
 					return err
 				}
 			}
-			projectInfo, err := project.Detect(cwd, projectName, selectedComponents, components)
+			projectInfo, err := project.Detect(cwd, projectName, selectedComponents, components, projectCfg)
 			if err != nil {
 				return err
 			}

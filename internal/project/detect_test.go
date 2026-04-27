@@ -29,7 +29,7 @@ func TestSelectedComponentsWorkForEmptyProject(t *testing.T) {
 		},
 	}
 
-	info, err := Detect(dir, "demo", []string{"svelte", "deploy"}, components)
+	info, err := Detect(dir, "demo", []string{"svelte", "deploy"}, components, config.ProjectConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestDetectSrcSubprojects(t *testing.T) {
   }
 }`)
 
-	info, err := Detect(dir, "demo", nil, nil)
+	info, err := Detect(dir, "demo", nil, nil, config.ProjectConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestDetectedComponentAddsGuidanceAndTools(t *testing.T) {
 		},
 	}
 
-	info, err := Detect(dir, "demo", nil, components)
+	info, err := Detect(dir, "demo", nil, components, config.ProjectConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,11 +114,29 @@ func TestDetectedComponentAddsGuidanceAndTools(t *testing.T) {
 	}
 }
 
+func TestProjectConfigDescriptionOverridesReadme(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "README.md"), "# Setup\n\nRun `make build` first.\n")
+
+	override := "Demo is a tiny in-memory key/value store used in tests."
+	info, err := Detect(dir, "demo", nil, nil, config.ProjectConfig{Description: override})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !contains(info.Overview, override) {
+		t.Fatalf("overview = %#v (expected to contain %q)", info.Overview, override)
+	}
+	if contains(info.Overview, "Run `make build` first.") {
+		t.Fatalf("overview unexpectedly fell back to README paragraph: %#v", info.Overview)
+	}
+}
+
 func TestDetectDesignFileAddsGuidance(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "DESIGN.md"), "# Design System\n")
 
-	info, err := Detect(dir, "demo", nil, nil)
+	info, err := Detect(dir, "demo", nil, nil, config.ProjectConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +163,7 @@ func TestStructureDescribesMonorepoTopLevelDirs(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "Makefile"), "build:\n")
 	mustWrite(t, filepath.Join(dir, "Cargo.toml"), "[package]\nname = \"x\"\n")
 
-	info, err := Detect(dir, "demo", nil, nil)
+	info, err := Detect(dir, "demo", nil, nil, config.ProjectConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +200,7 @@ func TestSelectedComponentWorksWithoutDetectorMatch(t *testing.T) {
 		},
 	}
 
-	info, err := Detect(dir, "demo", []string{"deploy"}, components)
+	info, err := Detect(dir, "demo", []string{"deploy"}, components, config.ProjectConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +236,7 @@ func TestGamePlatformMonorepoDetection(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "src", "svc-game-server", "src", "main.cpp"), "int main() { return 0; }\n")
 	mustWrite(t, filepath.Join(dir, "src", "svc-api", "go.mod"), "module game/svc-api\n\ngo 1.25\n\nrequire github.com/gofiber/fiber/v3 v3.1.0\n")
 
-	info, err := Detect(dir, "game-platform", nil, nil)
+	info, err := Detect(dir, "game-platform", nil, nil, config.ProjectConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +288,7 @@ func TestMixedSvelteGoWorkspaceDetection(t *testing.T) {
 }`)
 	mustWrite(t, filepath.Join(dir, "src", "svc-api", "go.mod"), "module example/svc-api\n\ngo 1.25\n\nrequire github.com/gofiber/fiber/v3 v3.1.0\n")
 
-	info, err := Detect(dir, "mixed-workspace", nil, nil)
+	info, err := Detect(dir, "mixed-workspace", nil, nil, config.ProjectConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}

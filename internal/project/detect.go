@@ -41,7 +41,7 @@ type packageJSON struct {
 	DevDependencies map[string]string `json:"devDependencies"`
 }
 
-func Detect(root, nameOverride string, selectedComponents []string, components []config.Component) (Info, error) {
+func Detect(root, nameOverride string, selectedComponents []string, components []config.Component, projectCfg config.ProjectConfig) (Info, error) {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return Info{}, err
@@ -53,7 +53,7 @@ func Detect(root, nameOverride string, selectedComponents []string, components [
 	}
 
 	info := Info{Name: name, Root: absRoot}
-	info.Overview = detectOverview(absRoot, name)
+	info.Overview = detectOverview(absRoot, name, projectCfg.Description)
 	info.Technologies = detectTechnologies(absRoot)
 	info.Structure = detectStructure(absRoot)
 	info.DesignFiles = detectDesignFiles(absRoot)
@@ -211,7 +211,10 @@ func ruleMatches(root string, rule config.DetectorRule) bool {
 	return false
 }
 
-func detectOverview(root, name string) []string {
+func detectOverview(root, name, override string) []string {
+	if override = strings.TrimSpace(override); override != "" {
+		return []string{override}
+	}
 	readme := readFirstExisting(root, "README.md", "readme.md", "README")
 	if readme != "" {
 		if summary := firstReadableParagraph(readme); summary != "" {
@@ -219,7 +222,7 @@ func detectOverview(root, name string) []string {
 			return []string{summary}
 		}
 	}
-	return []string{"`" + name + "` needs purpose and key workflows documented here."}
+	return []string{"`" + name + "` needs purpose and key workflows documented here. Set `description:` in `squire.yaml` to pin a real overview."}
 }
 
 func detectTechnologies(root string) []string {
@@ -406,8 +409,8 @@ func detectStructure(root string) []string {
 	if srcProjectCount > 0 {
 		lines = append(lines, detectSrcSubprojects(root)...)
 	}
-	if len(lines) > 20 {
-		lines = lines[:20]
+	if len(lines) > 50 {
+		lines = lines[:50]
 	}
 	return lines
 }
@@ -430,9 +433,9 @@ func detectSrcSubprojects(root string) []string {
 		}
 	}
 	sort.Strings(lines)
-	if len(lines) > 12 {
-		remaining := len(lines) - 12
-		lines = append(lines[:12], itoa(remaining)+" more `src/*` projects exist.")
+	if len(lines) > 30 {
+		remaining := len(lines) - 30
+		lines = append(lines[:30], itoa(remaining)+" more `src/*` projects exist.")
 	}
 	return lines
 }
@@ -468,12 +471,59 @@ func describeSubproject(root, rel string) string {
 		parts = append(parts, describeCXXSubproject(name, root, rel))
 	}
 
+	// Single-module Go monorepos commonly drop a `main.go` directly under
+	// each `src/<name>/` without giving the subdir its own go.mod. Detect
+	// that pattern as a Go command so those entries don't fall through to
+	// the generic "source project" sentence.
+	if len(parts) == 0 && exists(root, filepath.Join(rel, "main.go")) {
+		kind := "Go command"
+		switch {
+		case strings.HasPrefix(name, "svc-"):
+			kind = "Go service"
+		case strings.HasPrefix(name, "job-"):
+			kind = "Go job"
+		}
+		parts = append(parts, kind)
+	}
+
+	// Bun-flavoured services advertise themselves via bunfig.toml at the
+	// subproject root; couple that with a Dockerfile and we can be more
+	// specific than "service".
+	if len(parts) == 0 && exists(root, filepath.Join(rel, "bunfig.toml")) {
+		kind := "Bun project"
+		if strings.HasPrefix(name, "svc-") {
+			kind = "Bun service"
+		}
+		parts = append(parts, kind)
+	}
+
+	// A bare Dockerfile is still a useful signal — at minimum, this is a
+	// containerised something. Surface that rather than falling through.
+	if len(parts) == 0 && exists(root, filepath.Join(rel, "Dockerfile")) {
+		kind := "containerised project"
+		switch {
+		case strings.HasPrefix(name, "svc-"):
+			kind = "containerised service"
+		case strings.HasPrefix(name, "job-"):
+			kind = "containerised job"
+		}
+		parts = append(parts, kind)
+	}
+
 	if len(parts) == 0 {
 		switch {
 		case strings.HasPrefix(name, "svc-"):
 			parts = append(parts, "service")
 		case strings.HasPrefix(name, "site-"):
 			parts = append(parts, "site")
+		case strings.HasPrefix(name, "job-"):
+			parts = append(parts, "job")
+		case strings.HasPrefix(name, "app-"):
+			parts = append(parts, "application")
+		case strings.HasPrefix(name, "pkg-"):
+			parts = append(parts, "package")
+		case strings.HasPrefix(name, "lib-"):
+			parts = append(parts, "library")
 		default:
 			parts = append(parts, "source project")
 		}
@@ -837,9 +887,41 @@ func firstReadableParagraph(body string) string {
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "<!--") {
 			continue
 		}
+		// Skip pure-divider lines (---, ***, ___). Also handles the
+		// fence pair around a YAML frontmatter block at the top of a
+		// README — both ends are dividers, the middle is body lines we
+		// don't want as overview, and the readable paragraph after the
+		// closing fence is what we actually want.
+		if isMarkdownDivider(line) {
+			continue
+		}
 		return line
 	}
 	return ""
+}
+
+// isMarkdownDivider reports whether a non-empty trimmed line is a pure
+// horizontal-rule sequence (3+ of -, *, or _ with optional spaces).
+func isMarkdownDivider(s string) bool {
+	if len(s) < 3 {
+		return false
+	}
+	c := s[0]
+	if c != '-' && c != '*' && c != '_' {
+		return false
+	}
+	count := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case c:
+			count++
+		case ' ', '\t':
+			// allowed
+		default:
+			return false
+		}
+	}
+	return count >= 3
 }
 
 func readFirstExisting(root string, names ...string) string {
