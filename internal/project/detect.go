@@ -35,6 +35,7 @@ type Command struct {
 
 type packageJSON struct {
 	Name            string            `json:"name"`
+	Description     string            `json:"description"`
 	PackageManager  string            `json:"packageManager"`
 	Scripts         map[string]string `json:"scripts"`
 	Dependencies    map[string]string `json:"dependencies"`
@@ -460,7 +461,8 @@ func describeSubproject(root, rel string) string {
 		}
 	}
 
-	if pkg := readPackageJSONAt(root, filepath.Join(rel, "package.json")); pkg != nil {
+	pkg := readPackageJSONAt(root, filepath.Join(rel, "package.json"))
+	if pkg != nil {
 		parts = append(parts, describePackageSubproject(name, pkg))
 		if scripts := importantScripts(pkg.Scripts); len(scripts) > 0 {
 			parts = append(parts, "scripts `"+strings.Join(scripts, "`, `")+"`")
@@ -529,7 +531,54 @@ func describeSubproject(root, rel string) string {
 		}
 	}
 
-	return "`" + path + "` is " + joinPhrase(parts) + "."
+	sentence := "`" + path + "` is " + joinPhrase(parts)
+	if summary := subprojectSummary(root, rel, pkg); summary != "" {
+		return sentence + " — " + summary
+	}
+	return sentence + "."
+}
+
+// subprojectSummary returns a one-line human description for `rel`, sourced
+// from package.json's `description` field or the first readable paragraph of
+// a README in that directory. The returned string always ends in terminal
+// punctuation. Empty when neither source yields a usable line.
+func subprojectSummary(root, rel string, pkg *packageJSON) string {
+	if pkg != nil {
+		if s := cleanSummary(pkg.Description); s != "" {
+			return s
+		}
+	}
+	readme := readFirstExisting(root,
+		filepath.Join(rel, "README.md"),
+		filepath.Join(rel, "readme.md"),
+		filepath.Join(rel, "README"),
+	)
+	if readme != "" {
+		if s := cleanSummary(firstReadableParagraph(readme)); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// cleanSummary trims, takes the first line, and ensures the result ends in
+// terminal punctuation so it slots cleanly onto an "is X" sentence.
+func cleanSummary(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if i := strings.IndexAny(s, "\n\r"); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	if s == "" {
+		return ""
+	}
+	switch s[len(s)-1] {
+	case '.', '!', '?', ':', ';':
+		return s
+	}
+	return s + "."
 }
 
 func describePackageSubproject(name string, pkg *packageJSON) string {
