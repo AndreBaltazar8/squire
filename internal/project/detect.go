@@ -705,32 +705,101 @@ func mergeStringMaps(left, right map[string]string) map[string]string {
 
 func describePath(name string, dir bool) string {
 	switch name {
+	// Source layout
 	case "cmd":
 		return "CLI entrypoints"
 	case "internal":
 		return "private Go packages"
 	case "pkg":
-		return "public packages"
+		return "public Go/JS packages"
+	case "pkg-go", "pkg_go":
+		return "shared Go packages"
 	case "src":
 		return "source projects"
-	case "docs":
-		return "docs"
 	case "packages":
 		return "workspace packages"
+	case "lib", "libs":
+		return "shared libraries"
+	case "tools":
+		return "developer tools"
+	case "examples":
+		return "example projects"
+	case "tests", "test", "e2e":
+		return "tests"
+	case "proto", "protos":
+		return "protobuf definitions"
+	case "api":
+		return "API definitions"
+	case "scripts":
+		return "scripts"
+	case "docs":
+		return "docs"
+	case "specs":
+		return "feature specs and RFCs"
 	case "secrets":
 		return "secrets"
+
+	// Database / data
+	case "db", "database":
+		return "database schema and tooling"
+	case "migrations":
+		return "database migrations"
+
+	// Infra / deploy
+	case "infra":
+		return "infrastructure-as-code"
+	case "terraform":
+		return "Terraform IaC"
+	case "k8s", "kubernetes":
+		return "Kubernetes manifests"
+	case "helm":
+		return "Helm chart values"
+	case "docker":
+		return "Dockerfiles"
+
+	// Shared utilities seen in monorepos
+	case "sid-utils":
+		return "shared utilities"
+
+	// Editor / agent / CI config dirs
 	case ".cursor":
 		return "Cursor config"
 	case ".claude":
 		return "Claude config"
-	case "scripts":
-		return "scripts"
+	case ".github":
+		return "GitHub workflows and configuration"
+	case ".vscode":
+		return "VS Code workspace config"
+
+	// Root files
 	case "go.mod":
 		return "Go module"
 	case "go.sum":
 		return "Go lockfile"
+	case "go.work":
+		return "Go workspace"
 	case "package.json":
 		return "JS manifest"
+	case "bun.lock", "bun.lockb":
+		return "Bun lockfile"
+	case "Cargo.toml":
+		return "Rust manifest"
+	case "Cargo.lock":
+		return "Rust lockfile"
+	case "pyproject.toml":
+		return "Python project manifest"
+	case "requirements.txt":
+		return "Python dependencies"
+	case "tsconfig.json":
+		return "TypeScript config"
+	case "turbo.json":
+		return "Turborepo config"
+	case "Makefile":
+		return "Make targets"
+	case "Dockerfile":
+		return "container image"
+	case "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml":
+		return "local-dev compose stack"
 	case "config.yaml":
 		return "project config"
 	case "squire.yaml":
@@ -746,7 +815,15 @@ func describePath(name string, dir bool) string {
 
 func isImportantRootFile(name string) bool {
 	switch name {
-	case "go.mod", "go.sum", "package.json", "README.md", "readme.md", "DESIGN.md", "design.md", "config.yaml", "squire.yaml", "Dockerfile", "docker-compose.yml", "compose.yaml", "pyproject.toml", "Cargo.toml":
+	case "go.mod", "go.sum", "go.work",
+		"package.json", "bun.lock", "bun.lockb", "tsconfig.json", "turbo.json",
+		"Cargo.toml", "Cargo.lock",
+		"pyproject.toml", "requirements.txt",
+		"Makefile", "Dockerfile",
+		"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml",
+		"README.md", "readme.md",
+		"DESIGN.md", "design.md",
+		"config.yaml", "squire.yaml":
 		return true
 	default:
 		return false

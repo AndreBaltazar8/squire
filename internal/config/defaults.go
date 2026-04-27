@@ -37,8 +37,6 @@ detectors:
     - bun.lock
     - bun.lockb
 guidance:
-  technologies:
-    - "Bun manages workspace scripts and dependencies."
   commands:
     - command: bun install
       description: install dependencies
@@ -61,8 +59,6 @@ detectors:
   any:
     - go.mod
 guidance:
-  technologies:
-    - "Go project."
   commands:
     - command: go test ./...
       description: Go tests
