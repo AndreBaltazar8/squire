@@ -54,6 +54,9 @@ func Detect(root, nameOverride string, selectedComponents []string, components [
 	}
 
 	info := Info{Name: name, Root: absRoot}
+	if len(projectCfg.CLITools) > 0 {
+		info.Tools = append(info.Tools, projectCfg.CLITools...)
+	}
 	info.Overview = detectOverview(absRoot, name, projectCfg.Description)
 	info.Technologies = detectTechnologies(absRoot)
 	info.Structure = detectStructure(absRoot)
@@ -329,8 +332,16 @@ func packageTechnologies(root string, pkg *packageJSON) []string {
 
 func detectDesignFiles(root string) []string {
 	var files []string
+	rootEntries := map[string]bool{}
+	if entries, err := os.ReadDir(root); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				rootEntries[entry.Name()] = true
+			}
+		}
+	}
 	for _, name := range []string{"DESIGN.md", "design.md"} {
-		if exists(root, name) {
+		if rootEntries[name] {
 			files = append(files, name)
 		}
 	}
