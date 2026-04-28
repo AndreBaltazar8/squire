@@ -143,6 +143,15 @@ cli_tools:
       - playwright test
 ```
 
+Pass `--local` to scope a tool to the current project — it is written to `squire.yaml` instead and only surfaces in guides generated under that directory:
+
+```bash
+squire cli add game-krunker-harness --local --description "macOS dev harness." --when "Drive the running harness."
+squire cli remove game-krunker-harness --local
+```
+
+`squire cli list` shows both scopes, prefixed with `[global]` or `[local]`. Local tools override component- and global-provided tools with the same name.
+
 ## Development
 
 ```bash

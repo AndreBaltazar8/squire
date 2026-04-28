@@ -114,6 +114,56 @@ func TestDetectedComponentAddsGuidanceAndTools(t *testing.T) {
 	}
 }
 
+func TestProjectConfigCLIToolsOverrideComponent(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "deploy.yaml"), "{}")
+
+	components := []config.Component{
+		{
+			ID: "deploy",
+			Detectors: config.ComponentDetectors{
+				Any: []config.DetectorRule{{Glob: "deploy.yaml"}},
+			},
+			CLITools: []config.ToolConfig{{
+				Name:        "deployctl",
+				Command:     "deployctl",
+				Description: "from component",
+			}},
+		},
+	}
+
+	projectCfg := config.ProjectConfig{
+		CLITools: []config.ToolConfig{
+			{Name: "deployctl", Command: "deployctl-local", Description: "from project"},
+			{Name: "harness", Command: "game-krunker-harness", Description: "local-only"},
+		},
+	}
+
+	info, err := Detect(dir, "demo", nil, components, projectCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var deployctl, harness *config.ToolConfig
+	for i := range info.Tools {
+		switch info.Tools[i].Name {
+		case "deployctl":
+			deployctl = &info.Tools[i]
+		case "harness":
+			harness = &info.Tools[i]
+		}
+	}
+	if deployctl == nil {
+		t.Fatalf("deployctl missing in tools = %#v", info.Tools)
+	}
+	if deployctl.Description != "from project" || deployctl.Command != "deployctl-local" {
+		t.Fatalf("project tool did not override component: %#v", deployctl)
+	}
+	if harness == nil || harness.Command != "game-krunker-harness" {
+		t.Fatalf("project-only tool missing: %#v", info.Tools)
+	}
+}
+
 func TestProjectConfigDescriptionOverridesReadme(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "README.md"), "# Setup\n\nRun `make build` first.\n")

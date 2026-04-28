@@ -70,36 +70,68 @@ func newCLICommand(opts *rootOptions) *cobra.Command {
 	var description string
 	var when string
 	var examples []string
+	var addLocal bool
 	addCmd := &cobra.Command{
 		Use:   "add <name> [command]",
 		Short: "Add or update a CLI tool",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			applyTool := func(existing config.ToolConfig) config.ToolConfig {
+				existing.Name = name
+				if len(args) == 2 {
+					existing.Command = args[1]
+				}
+				if existing.Command == "" {
+					existing.Command = name
+				}
+				if cmd.Flags().Changed("description") {
+					existing.Description = description
+				}
+				if cmd.Flags().Changed("when") {
+					existing.When = when
+				}
+				if cmd.Flags().Changed("example") {
+					existing.Examples = examples
+				}
+				return existing
+			}
+
+			if addLocal {
+				cwd, err := resolveCWD(opts.CWD)
+				if err != nil {
+					return err
+				}
+				projectCfg, err := config.LoadProjectConfig(cwd)
+				if err != nil {
+					return err
+				}
+				tool, index := findTool(projectCfg.CLITools, name)
+				created := index == -1
+				tool = applyTool(tool)
+				if created {
+					projectCfg.CLITools = append(projectCfg.CLITools, tool)
+				} else {
+					projectCfg.CLITools[index] = tool
+				}
+				if err := config.SaveProjectConfig(cwd, projectCfg); err != nil {
+					return err
+				}
+				status := "updated"
+				if created {
+					status = "added"
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "%s %s (`%s`) [local]\n", status, tool.Name, tool.Command)
+				return nil
+			}
+
 			cfg, err := config.LoadConfig(opts.ConfigDir)
 			if err != nil {
 				return err
 			}
-
-			name := args[0]
 			tool, index := findTool(cfg.CLITools, name)
 			created := index == -1
-			tool.Name = name
-			if len(args) == 2 {
-				tool.Command = args[1]
-			}
-			if tool.Command == "" {
-				tool.Command = name
-			}
-			if cmd.Flags().Changed("description") {
-				tool.Description = description
-			}
-			if cmd.Flags().Changed("when") {
-				tool.When = when
-			}
-			if cmd.Flags().Changed("example") {
-				tool.Examples = examples
-			}
-
+			tool = applyTool(tool)
 			if created {
 				cfg.CLITools = append(cfg.CLITools, tool)
 			} else {
@@ -113,37 +145,63 @@ func newCLICommand(opts *rootOptions) *cobra.Command {
 			if created {
 				status = "added"
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s %s (`%s`)\n", status, tool.Name, tool.Command)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s %s (`%s`) [global]\n", status, tool.Name, tool.Command)
 			return nil
 		},
 	}
 	addCmd.Flags().StringVar(&description, "description", "", "tool description for generated guides")
 	addCmd.Flags().StringVar(&when, "when", "", "when agents should use the tool")
 	addCmd.Flags().StringArrayVar(&examples, "example", nil, "example command; may be repeated")
+	addCmd.Flags().BoolVar(&addLocal, "local", false, "store the tool in the project's squire.yaml instead of the global config")
 
+	var removeLocal bool
 	removeCmd := &cobra.Command{
 		Use:     "remove <name>",
 		Aliases: []string{"rm"},
-		Short:   "Remove a CLI tool from the global Squire config",
+		Short:   "Remove a CLI tool from the global or local Squire config",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if removeLocal {
+				cwd, err := resolveCWD(opts.CWD)
+				if err != nil {
+					return err
+				}
+				projectCfg, err := config.LoadProjectConfig(cwd)
+				if err != nil {
+					return err
+				}
+				_, index := findTool(projectCfg.CLITools, name)
+				if index == -1 {
+					return fmt.Errorf("CLI tool %q is not configured locally", name)
+				}
+				removed := projectCfg.CLITools[index]
+				projectCfg.CLITools = append(projectCfg.CLITools[:index], projectCfg.CLITools[index+1:]...)
+				if err := config.SaveProjectConfig(cwd, projectCfg); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "removed %s [local]\n", removed.Name)
+				return nil
+			}
+
 			cfg, err := config.LoadConfig(opts.ConfigDir)
 			if err != nil {
 				return err
 			}
-			_, index := findTool(cfg.CLITools, args[0])
+			_, index := findTool(cfg.CLITools, name)
 			if index == -1 {
-				return fmt.Errorf("CLI tool %q is not configured", args[0])
+				return fmt.Errorf("CLI tool %q is not configured", name)
 			}
 			removed := cfg.CLITools[index]
 			cfg.CLITools = append(cfg.CLITools[:index], cfg.CLITools[index+1:]...)
 			if err := config.SaveConfig(opts.ConfigDir, cfg); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "removed %s\n", removed.Name)
+			fmt.Fprintf(cmd.OutOrStdout(), "removed %s [global]\n", removed.Name)
 			return nil
 		},
 	}
+	removeCmd.Flags().BoolVar(&removeLocal, "local", false, "remove from the project's squire.yaml instead of the global config")
 
 	cmd.AddCommand(listCmd, addCmd, removeCmd)
 	return cmd
@@ -616,17 +674,40 @@ func printReport(cmd *cobra.Command, report analyze.Report) {
 	}
 }
 
+type scopedToolDetection struct {
+	Scope string `json:"scope"`
+	agentpkg.ToolDetection
+}
+
 func runCLIList(cmd *cobra.Command, opts *rootOptions, jsonOut bool) error {
 	cfg, err := config.LoadConfig(opts.ConfigDir)
 	if err != nil {
 		return err
 	}
-	detected := agentpkg.DetectTools(cfg.CLITools)
-	if jsonOut {
-		return writeJSON(cmd, detected)
+
+	var localTools []config.ToolConfig
+	cwd, cwdErr := resolveCWD(opts.CWD)
+	if cwdErr == nil {
+		projectCfg, err := config.LoadProjectConfig(cwd)
+		if err != nil {
+			return err
+		}
+		localTools = projectCfg.CLITools
 	}
-	for _, item := range detected {
-		fmt.Fprintf(cmd.OutOrStdout(), "%s\n", detectionLine(item.Name, item.Command, item.Installed, item.Path))
+
+	out := make([]scopedToolDetection, 0, len(cfg.CLITools)+len(localTools))
+	for _, item := range agentpkg.DetectTools(cfg.CLITools) {
+		out = append(out, scopedToolDetection{Scope: "global", ToolDetection: item})
+	}
+	for _, item := range agentpkg.DetectTools(localTools) {
+		out = append(out, scopedToolDetection{Scope: "local", ToolDetection: item})
+	}
+
+	if jsonOut {
+		return writeJSON(cmd, out)
+	}
+	for _, item := range out {
+		fmt.Fprintf(cmd.OutOrStdout(), "[%s] %s\n", item.Scope, detectionLine(item.Name, item.Command, item.Installed, item.Path))
 	}
 	return nil
 }
