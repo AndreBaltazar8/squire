@@ -22,13 +22,17 @@ type Config struct {
 }
 
 type ProjectConfig struct {
-	Components []string `yaml:"components" json:"components"`
+	Components []string `yaml:"components,omitempty" json:"components,omitempty"`
 	// Description, when set, overrides the auto-detected Project Overview
 	// paragraph. Pin it in `squire.yaml` when the README's first paragraph
 	// is not actually a description of the project (legacy READMEs that
 	// open with a setup section, "How to get started" prefixes, meta
 	// disclaimers about the README itself, etc.).
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+	// CLITools are project-local CLI tools surfaced in generated guides.
+	// They take precedence over component-provided and global tools with
+	// the same name.
+	CLITools []ToolConfig `yaml:"cli_tools,omitempty" json:"cli_tools,omitempty"`
 }
 
 type AgentConfig struct {
@@ -62,8 +66,8 @@ type ComponentDetectors struct {
 
 // DetectorRule is a single match condition. It accepts two YAML forms:
 //
-//	- some/path/glob              # bare string, treated as Glob
-//	- {file: name, contains: txt} # content-aware match
+//   - some/path/glob              # bare string, treated as Glob
+//   - {file: name, contains: txt} # content-aware match
 //
 // A rule with only Glob (or only File) checks file existence. A rule with
 // Contains additionally requires the matched file to contain the substring
@@ -211,6 +215,36 @@ func LoadProjectConfig(root string) (ProjectConfig, error) {
 		return ProjectConfig{}, err
 	}
 	return cfg, nil
+}
+
+func SaveProjectConfig(root string, cfg ProjectConfig) error {
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+	raw, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(root, ProjectConfigFileName)
+	tmp, err := os.CreateTemp(root, ProjectConfigFileName+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if _, err := tmp.Write(raw); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func LoadComponents(configDir string) ([]Component, error) {
